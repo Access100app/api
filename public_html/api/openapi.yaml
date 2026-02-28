@@ -1,0 +1,1905 @@
+openapi: 3.1.0
+
+info:
+  title: Access100 API
+  description: |
+    REST API for Access100, the backend powering civi.me — a civic engagement
+    platform that surfaces Hawaii government meeting information, board/commission
+    details, and resident notification subscriptions.
+
+    ## Authentication
+
+    Most endpoints require an API key passed in the `X-API-Key` request header.
+    Public endpoints (health, stats, subscription confirmation, unsubscribe, and
+    webhook receivers) do not require a key.
+
+    Subscription management endpoints (`GET`, `PATCH`, `PUT`, `DELETE` on
+    `/subscriptions/{id}`) use a per-subscriber `manage_token` passed as a query
+    parameter instead of the API key.
+
+    ## Response Envelope
+
+    All JSON responses are wrapped in a standard envelope:
+
+    **Success**
+    ```json
+    {
+      "data": { ... },
+      "meta": {
+        "api_version": "v1",
+        "timestamp": "2024-01-15T10:30:00Z"
+      }
+    }
+    ```
+
+    **Success with pagination**
+    ```json
+    {
+      "data": [ ... ],
+      "meta": {
+        "api_version": "v1",
+        "timestamp": "2024-01-15T10:30:00Z",
+        "total": 142,
+        "limit": 50,
+        "offset": 0,
+        "has_more": true
+      }
+    }
+    ```
+
+    **Error**
+    ```json
+    {
+      "error": {
+        "code": 404,
+        "message": "Meeting not found",
+        "details": {}
+      }
+    }
+    ```
+
+    ## Rate Limiting
+
+    Rate limit status is communicated via response headers on every request:
+    - `X-RateLimit-Limit` — requests allowed per window
+    - `X-RateLimit-Remaining` — requests remaining in current window
+    - `X-RateLimit-Reset` — Unix timestamp when the window resets
+
+  version: 1.0.0
+  contact:
+    name: Access100 / civi.me
+    url: https://civi.me
+
+servers:
+  - url: https://app.access100.app/api/v1
+    description: Production
+
+# ---------------------------------------------------------------------------
+# Reusable components
+# ---------------------------------------------------------------------------
+components:
+
+  securitySchemes:
+    ApiKeyHeader:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Required on all authenticated endpoints.
+    ManageToken:
+      type: apiKey
+      in: query
+      name: token
+      description: Per-subscriber token issued at subscription creation. Used in place of X-API-Key for subscriber self-service endpoints.
+
+  # -------------------------------------------------------------------------
+  # Shared parameters
+  # -------------------------------------------------------------------------
+  parameters:
+    LimitParam:
+      name: limit
+      in: query
+      description: Maximum number of records to return (max 200).
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+
+    OffsetParam:
+      name: offset
+      in: query
+      description: Number of records to skip for pagination.
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+
+    CouncilIdPath:
+      name: id
+      in: path
+      required: true
+      description: Numeric council identifier.
+      schema:
+        type: integer
+
+    StateIdPath:
+      name: state_id
+      in: path
+      required: true
+      description: State-issued meeting identifier (opaque string).
+      schema:
+        type: string
+
+    TopicSlugPath:
+      name: slug
+      in: path
+      required: true
+      description: URL-safe topic slug (e.g. `housing`, `environment`).
+      schema:
+        type: string
+
+    SubscriptionIdPath:
+      name: id
+      in: path
+      required: true
+      description: Numeric subscription identifier.
+      schema:
+        type: integer
+
+    ManageTokenQuery:
+      name: token
+      in: query
+      required: true
+      description: Manage token issued at subscription creation.
+      schema:
+        type: string
+
+  # -------------------------------------------------------------------------
+  # Shared schemas
+  # -------------------------------------------------------------------------
+  schemas:
+
+    # -- Envelope wrappers --
+
+    SuccessMeta:
+      type: object
+      required: [api_version, timestamp]
+      properties:
+        api_version:
+          type: string
+          example: v1
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+
+    PaginationMeta:
+      allOf:
+        - $ref: '#/components/schemas/SuccessMeta'
+        - type: object
+          required: [total, limit, offset, has_more]
+          properties:
+            total:
+              type: integer
+              description: Total matching records across all pages.
+            limit:
+              type: integer
+            offset:
+              type: integer
+            has_more:
+              type: boolean
+
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: integer
+              description: HTTP status code mirrored in the body for client convenience.
+            message:
+              type: string
+            details:
+              type: object
+              nullable: true
+              additionalProperties: true
+
+    # -- Domain objects --
+
+    CouncilSummary:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        parent_id:
+          type: integer
+          nullable: true
+        parent_name:
+          type: string
+          nullable: true
+        upcoming_meeting_count:
+          type: integer
+
+    CouncilBrief:
+      description: Minimal council reference embedded inside meeting objects.
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        parent_name:
+          type: string
+          nullable: true
+
+    CouncilDetail:
+      allOf:
+        - $ref: '#/components/schemas/CouncilSummary'
+        - type: object
+          required: [children]
+          properties:
+            children:
+              type: array
+              items:
+                type: object
+                required: [id, name]
+                properties:
+                  id:
+                    type: integer
+                  name:
+                    type: string
+
+    CouncilProfile:
+      type: object
+      required: [id, name, slug, jurisdiction, entity_type]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        slug:
+          type: string
+        plain_description:
+          type: string
+          nullable: true
+        decisions_examples:
+          type: string
+          nullable: true
+          description: Examples of decisions this body makes.
+        why_care:
+          type: string
+          nullable: true
+          description: Civic relevance summary for residents.
+        appointment_method:
+          type: string
+          nullable: true
+        term_length:
+          type: string
+          nullable: true
+        meeting_schedule:
+          type: string
+          nullable: true
+        default_location:
+          type: string
+          nullable: true
+        virtual_option:
+          type: boolean
+          nullable: true
+        testimony_email:
+          type: string
+          format: email
+          nullable: true
+        testimony_instructions:
+          type: string
+          nullable: true
+        public_comment_info:
+          type: string
+          nullable: true
+        official_website:
+          type: string
+          format: uri
+          nullable: true
+        contact_phone:
+          type: string
+          nullable: true
+        contact_email:
+          type: string
+          format: email
+          nullable: true
+        jurisdiction:
+          type: string
+          enum: [state, honolulu, maui, hawaii, kauai]
+        entity_type:
+          type: string
+          enum: [board, commission, council, committee, authority, department, office]
+        member_count:
+          type: integer
+          nullable: true
+        vacancy_count:
+          type: integer
+          nullable: true
+        vacancy_info:
+          type: string
+          nullable: true
+        last_updated:
+          type: string
+          format: date-time
+          nullable: true
+
+    LegalReference:
+      type: object
+      required: [citation, description]
+      properties:
+        citation:
+          type: string
+          example: "HRS § 26-35"
+        description:
+          type: string
+        url:
+          type: string
+          format: uri
+          nullable: true
+
+    BoardMember:
+      type: object
+      required: [name, status]
+      properties:
+        name:
+          type: string
+        title:
+          type: string
+          nullable: true
+        role:
+          type: string
+          nullable: true
+        appointed_by:
+          type: string
+          nullable: true
+        term_start:
+          type: string
+          format: date
+          nullable: true
+        term_end:
+          type: string
+          format: date
+          nullable: true
+        status:
+          type: string
+          enum: [active, expired, vacant]
+
+    Vacancy:
+      type: object
+      required: [status]
+      properties:
+        seat_description:
+          type: string
+          nullable: true
+        requirements:
+          type: string
+          nullable: true
+        application_url:
+          type: string
+          format: uri
+          nullable: true
+        application_deadline:
+          type: string
+          format: date
+          nullable: true
+        appointing_authority:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [open, pending, filled]
+
+    MeetingAttachment:
+      type: object
+      required: [file_name, file_url]
+      properties:
+        file_name:
+          type: string
+        file_url:
+          type: string
+          format: uri
+        file_type:
+          type: string
+          nullable: true
+          description: MIME type or informal label (e.g. `application/pdf`, `agenda`, `minutes`).
+
+    DirectTopic:
+      description: Topic explicitly tagged on this meeting.
+      type: object
+      required: [slug, name]
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        icon:
+          type: string
+          nullable: true
+          description: Emoji or icon identifier.
+        source:
+          type: string
+          nullable: true
+          description: How the topic was assigned (e.g. `manual`, `nlp`).
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          nullable: true
+
+    InheritedTopic:
+      description: Topic inherited from the parent council's default topics.
+      type: object
+      required: [slug, name]
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        icon:
+          type: string
+          nullable: true
+        relevance:
+          type: string
+          nullable: true
+          description: Human-readable relevance note.
+
+    MeetingListItem:
+      type: object
+      required: [state_id, title, meeting_date, council]
+      properties:
+        state_id:
+          type: string
+          description: State-issued opaque identifier for this meeting.
+        title:
+          type: string
+        meeting_date:
+          type: string
+          format: date
+          example: "2024-03-15"
+        meeting_time:
+          type: string
+          nullable: true
+          description: Local time as a string (e.g. `10:00 AM`).
+        location:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+          description: Meeting status (e.g. `scheduled`, `cancelled`, `rescheduled`).
+        detail_url:
+          type: string
+          format: uri
+          nullable: true
+          description: Source URL on the government website.
+        council:
+          $ref: '#/components/schemas/CouncilBrief'
+
+    MeetingDetail:
+      allOf:
+        - $ref: '#/components/schemas/MeetingListItem'
+        - type: object
+          properties:
+            zoom_link:
+              type: string
+              format: uri
+              nullable: true
+            description:
+              type: string
+              nullable: true
+            summary_text:
+              type: string
+              nullable: true
+              description: AI-generated plain-language summary.
+            attachments:
+              type: array
+              items:
+                $ref: '#/components/schemas/MeetingAttachment'
+            topics:
+              type: object
+              properties:
+                direct:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/DirectTopic'
+                inherited:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/InheritedTopic'
+
+    MeetingSummary:
+      type: object
+      required: [state_id, council_name, title]
+      properties:
+        state_id:
+          type: string
+        council_name:
+          type: string
+        title:
+          type: string
+        summary_text:
+          type: string
+          nullable: true
+
+    Topic:
+      type: object
+      required: [id, slug, name]
+      properties:
+        id:
+          type: integer
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        icon:
+          type: string
+          nullable: true
+        display_order:
+          type: integer
+          nullable: true
+        council_count:
+          type: integer
+        meeting_count:
+          type: integer
+
+    TopicDetail:
+      allOf:
+        - $ref: '#/components/schemas/Topic'
+        - type: object
+          properties:
+            councils:
+              type: array
+              items:
+                $ref: '#/components/schemas/CouncilSummary'
+
+    SubscriptionChannels:
+      type: array
+      items:
+        type: string
+        enum: [email, sms]
+      minItems: 1
+
+    SubscriptionFrequency:
+      type: string
+      enum: [immediate, daily, weekly]
+
+    SubscriptionCreateBody:
+      type: object
+      required: [channels, frequency]
+      properties:
+        email:
+          type: string
+          format: email
+          description: Required when `channels` includes `email`.
+        phone:
+          type: string
+          description: E.164 phone number. Required when `channels` includes `sms`.
+          example: "+18085550100"
+        channels:
+          $ref: '#/components/schemas/SubscriptionChannels'
+        council_ids:
+          type: array
+          items:
+            type: integer
+          description: Councils to subscribe to. At least one of `council_ids` or `topics` must be non-empty.
+        topics:
+          type: array
+          items:
+            type: string
+          description: Topic slugs to subscribe to.
+        frequency:
+          $ref: '#/components/schemas/SubscriptionFrequency'
+        source:
+          type: string
+          nullable: true
+          description: Attribution source (e.g. `civi.me`, `widget`).
+
+    SubscriptionCreated:
+      type: object
+      required: [user_id, status, manage_token, channels, frequency, message]
+      properties:
+        user_id:
+          type: integer
+        status:
+          type: string
+          enum: [pending_confirmation]
+        manage_token:
+          type: string
+          description: Opaque token the subscriber uses for self-service management. Store securely.
+        councils:
+          type: array
+          items:
+            $ref: '#/components/schemas/CouncilSummary'
+        topics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Topic'
+        channels:
+          $ref: '#/components/schemas/SubscriptionChannels'
+        frequency:
+          $ref: '#/components/schemas/SubscriptionFrequency'
+        message:
+          type: string
+          description: Human-readable next-step instruction (e.g. "Check your email to confirm.").
+
+    SubscriptionDetail:
+      type: object
+      required: [id, status, channels, frequency]
+      properties:
+        id:
+          type: integer
+        status:
+          type: string
+          enum: [pending_confirmation, active, unsubscribed]
+        email:
+          type: string
+          format: email
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        channels:
+          $ref: '#/components/schemas/SubscriptionChannels'
+        frequency:
+          $ref: '#/components/schemas/SubscriptionFrequency'
+        councils:
+          type: array
+          items:
+            $ref: '#/components/schemas/CouncilSummary'
+        topics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Topic'
+        created_at:
+          type: string
+          format: date-time
+
+    SubscriptionUpdateBody:
+      type: object
+      description: All fields optional; only supplied fields are changed.
+      properties:
+        email:
+          type: string
+          format: email
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        channels:
+          $ref: '#/components/schemas/SubscriptionChannels'
+        frequency:
+          $ref: '#/components/schemas/SubscriptionFrequency'
+
+    CouncilReplaceBody:
+      type: object
+      required: [council_ids]
+      properties:
+        council_ids:
+          type: array
+          items:
+            type: integer
+          description: Complete replacement list of council IDs. An empty array removes all councils.
+
+  # -------------------------------------------------------------------------
+  # Shared responses
+  # -------------------------------------------------------------------------
+  responses:
+    Unauthorized:
+      description: Missing or invalid API key.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: 401
+              message: "Invalid or missing X-API-Key"
+
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: 404
+              message: "Not found"
+
+    MethodNotAllowed:
+      description: HTTP method not allowed on this endpoint.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+    TooManyRequests:
+      description: Rate limit exceeded.
+      headers:
+        X-RateLimit-Limit:
+          schema:
+            type: integer
+        X-RateLimit-Remaining:
+          schema:
+            type: integer
+        X-RateLimit-Reset:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: 429
+              message: "Rate limit exceeded. Retry after the X-RateLimit-Reset timestamp."
+
+    InternalError:
+      description: Unexpected server error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: 500
+              message: "Internal server error"
+
+    ServiceUnavailable:
+      description: Service temporarily unavailable (e.g. database down, maintenance).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: 503
+              message: "Service unavailable"
+
+    BadRequest:
+      description: Invalid request parameters or body.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: 400
+              message: "Validation failed"
+              details:
+                email: "Must be a valid email address"
+
+# ---------------------------------------------------------------------------
+# Global security — overridden per-operation for public endpoints
+# ---------------------------------------------------------------------------
+security:
+  - ApiKeyHeader: []
+
+# ---------------------------------------------------------------------------
+# Rate limit headers on every response (declared globally for documentation)
+# ---------------------------------------------------------------------------
+# Note: OpenAPI 3.1 does not support global response headers natively;
+# they are documented per-operation where they matter most. The headers apply
+# to all endpoints regardless.
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+paths:
+
+  # --------------------------------------------------------------------------
+  # Health & Stats (public)
+  # --------------------------------------------------------------------------
+
+  /health:
+    get:
+      operationId: getHealth
+      summary: API health check
+      description: |
+        Returns the current health of the API, database connectivity, scraper
+        state, background queue depth, and a 24-hour notification delivery summary.
+        This endpoint is public and does not require an API key.
+      tags: [System]
+      security: []
+      responses:
+        "200":
+          description: Health status.
+          headers:
+            X-RateLimit-Limit:
+              schema: {type: integer}
+            X-RateLimit-Remaining:
+              schema: {type: integer}
+            X-RateLimit-Reset:
+              schema: {type: integer}
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [status]
+                    properties:
+                      status:
+                        type: string
+                        enum: [ok, degraded, down]
+                      database:
+                        type: object
+                        properties:
+                          connected:
+                            type: boolean
+                          query_time_ms:
+                            type: number
+                      scraper:
+                        type: object
+                        properties:
+                          state:
+                            type: string
+                            enum: [idle, running, error]
+                          last_run_at:
+                            type: string
+                            format: date-time
+                            nullable: true
+                          last_run_duration_ms:
+                            type: integer
+                            nullable: true
+                      queue:
+                        type: object
+                        properties:
+                          depth:
+                            type: integer
+                            description: Number of jobs currently pending.
+                      notifications_24h:
+                        type: object
+                        properties:
+                          sent:
+                            type: integer
+                          delivered:
+                            type: integer
+                          failed:
+                            type: integer
+                  meta:
+                    $ref: '#/components/schemas/SuccessMeta'
+              example:
+                data:
+                  status: ok
+                  database:
+                    connected: true
+                    query_time_ms: 1.4
+                  scraper:
+                    state: idle
+                    last_run_at: "2024-01-15T09:00:00Z"
+                    last_run_duration_ms: 42300
+                  queue:
+                    depth: 0
+                  notifications_24h:
+                    sent: 312
+                    delivered: 308
+                    failed: 4
+                meta:
+                  api_version: v1
+                  timestamp: "2024-01-15T10:30:00Z"
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /stats:
+    get:
+      operationId: getStats
+      summary: Platform statistics
+      description: |
+        Returns aggregate platform statistics: total meetings indexed, number of
+        councils tracked, active subscribers, and the date range of coverage.
+        This endpoint is public and does not require an API key.
+      tags: [System]
+      security: []
+      responses:
+        "200":
+          description: Platform statistics.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      meetings:
+                        type: integer
+                        description: Total meetings indexed.
+                      councils:
+                        type: integer
+                        description: Total councils tracked.
+                      subscribers:
+                        type: integer
+                        description: Total active subscribers.
+                      coverage_start:
+                        type: string
+                        format: date
+                        nullable: true
+                        description: Earliest meeting date in the dataset.
+                      coverage_end:
+                        type: string
+                        format: date
+                        nullable: true
+                        description: Latest meeting date in the dataset.
+                  meta:
+                    $ref: '#/components/schemas/SuccessMeta'
+              example:
+                data:
+                  meetings: 14820
+                  councils: 218
+                  subscribers: 4301
+                  coverage_start: "2022-01-01"
+                  coverage_end: "2024-06-30"
+                meta:
+                  api_version: v1
+                  timestamp: "2024-01-15T10:30:00Z"
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  # --------------------------------------------------------------------------
+  # Meetings
+  # --------------------------------------------------------------------------
+
+  /meetings:
+    get:
+      operationId: listMeetings
+      summary: List meetings
+      description: |
+        Returns a paginated list of meetings optionally filtered by date range,
+        council, keyword search, and/or topics. All filters may be combined.
+      tags: [Meetings]
+      parameters:
+        - name: date_from
+          in: query
+          description: Include meetings on or after this date (ISO 8601 date).
+          schema:
+            type: string
+            format: date
+            example: "2024-01-01"
+        - name: date_to
+          in: query
+          description: Include meetings on or before this date (ISO 8601 date).
+          schema:
+            type: string
+            format: date
+            example: "2024-03-31"
+        - name: council_id
+          in: query
+          description: Filter by a single council ID.
+          schema:
+            type: integer
+        - name: q
+          in: query
+          description: Keyword search against meeting title and description.
+          schema:
+            type: string
+            example: "affordable housing"
+        - name: topics
+          in: query
+          description: Comma-separated list of topic slugs. Returns meetings tagged with any of the supplied slugs.
+          schema:
+            type: string
+            example: "housing,environment"
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/OffsetParam'
+      responses:
+        "200":
+          description: Paginated list of meetings.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MeetingListItem'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /meetings/{state_id}:
+    get:
+      operationId: getMeeting
+      summary: Meeting detail
+      description: Returns full detail for a single meeting including attachments and tagged topics.
+      tags: [Meetings]
+      parameters:
+        - $ref: '#/components/parameters/StateIdPath'
+      responses:
+        "200":
+          description: Meeting detail.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MeetingDetail'
+                  meta:
+                    $ref: '#/components/schemas/SuccessMeta'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /meetings/{state_id}/summary:
+    get:
+      operationId: getMeetingSummary
+      summary: Meeting AI summary
+      description: Returns only the AI-generated plain-language summary for a meeting. Lighter-weight than the full detail endpoint.
+      tags: [Meetings]
+      parameters:
+        - $ref: '#/components/parameters/StateIdPath'
+      responses:
+        "200":
+          description: Meeting summary.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MeetingSummary'
+                  meta:
+                    $ref: '#/components/schemas/SuccessMeta'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /meetings/{state_id}/ics:
+    get:
+      operationId: getMeetingIcs
+      summary: Meeting iCalendar download
+      description: |
+        Returns a standard iCalendar (`.ics`) file for the meeting, suitable for
+        importing into any calendar application. The response `Content-Type` is
+        `text/calendar` (not JSON).
+      tags: [Meetings]
+      parameters:
+        - $ref: '#/components/parameters/StateIdPath'
+      responses:
+        "200":
+          description: iCalendar file.
+          content:
+            text/calendar:
+              schema:
+                type: string
+                example: |
+                  BEGIN:VCALENDAR
+                  VERSION:2.0
+                  PRODID:-//Access100//civi.me//EN
+                  BEGIN:VEVENT
+                  UID:meeting-HI-12345@access100.app
+                  DTSTART:20240315T100000
+                  SUMMARY:Board of Education Regular Meeting
+                  END:VEVENT
+                  END:VCALENDAR
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  # --------------------------------------------------------------------------
+  # Councils
+  # --------------------------------------------------------------------------
+
+  /councils:
+    get:
+      operationId: listCouncils
+      summary: List councils
+      description: Returns a list of all councils/boards/commissions, with optional filters.
+      tags: [Councils]
+      parameters:
+        - name: q
+          in: query
+          description: Keyword search against council name.
+          schema:
+            type: string
+        - name: parent_id
+          in: query
+          description: Filter to child bodies of this parent council ID.
+          schema:
+            type: integer
+        - name: has_upcoming
+          in: query
+          description: When `true`, return only councils with at least one upcoming meeting.
+          schema:
+            type: boolean
+        - name: topic
+          in: query
+          description: Filter by topic slug — return councils associated with that topic.
+          schema:
+            type: string
+        - name: jurisdiction
+          in: query
+          description: Filter by geographic jurisdiction.
+          schema:
+            type: string
+            enum: [state, honolulu, maui, hawaii, kauai]
+        - name: type
+          in: query
+          description: Filter by the type of government body.
+          schema:
+            type: string
+            enum: [board, commission, council, committee, authority, department, office]
+      responses:
+        "200":
+          description: List of councils.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CouncilSummary'
+                  meta:
+                    $ref: '#/components/schemas/SuccessMeta'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /councils/{id}:
+    get:
+      operationId: getCouncil
+      summary: Council detail
+      description: Returns full detail for a single council including its child bodies.
+      tags: [Councils]
+      parameters:
+        - $ref: '#/components/parameters/CouncilIdPath'
+      responses:
+        "200":
+          description: Council detail.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CouncilDetail'
+                  meta:
+                    $ref: '#/components/schemas/SuccessMeta'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /councils/{id}/meetings:
+    get:
+      operationId: getCouncilMeetings
+      summary: Council upcoming meetings
+      description: Returns upcoming meetings for the specified council, paginated.
+      tags: [Councils]
+      parameters:
+        - $ref: '#/components/parameters/CouncilIdPath'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/OffsetParam'
+      responses:
+        "200":
+          description: Paginated list of upcoming meetings for this council.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MeetingListItem'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /councils/slug/{slug}:
+    get:
+      operationId: getCouncilBySlug
+      summary: Council lookup by slug
+      description: Looks up a council by its URL slug and returns the same response as `GET /councils/{id}`.
+      tags: [Councils]
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: URL-safe council slug (e.g. `board-of-education`).
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Council detail.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CouncilDetail'
+                  meta:
+                    $ref: '#/components/schemas/SuccessMeta'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /councils/{id}/profile:
+    get:
+      operationId: getCouncilProfile
+      summary: Council full profile
+      description: |
+        Returns the complete editorially-curated profile for a council, including
+        descriptive content, meeting logistics, public comment info, and governance
+        metadata. Intended for the council detail page on civi.me.
+      tags: [Councils]
+      parameters:
+        - $ref: '#/components/parameters/CouncilIdPath'
+      responses:
+        "200":
+          description: Council profile.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CouncilProfile'
+                  meta:
+                    $ref: '#/components/schemas/SuccessMeta'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /councils/{id}/authority:
+    get:
+      operationId: getCouncilAuthority
+      summary: Council legal authority
+      description: Returns the legal citations (statutes, ordinances, rules) that establish or govern this body.
+      tags: [Councils]
+      parameters:
+        - $ref: '#/components/parameters/CouncilIdPath'
+      responses:
+        "200":
+          description: List of legal references.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LegalReference'
+                  meta:
+                    $ref: '#/components/schemas/SuccessMeta'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /councils/{id}/members:
+    get:
+      operationId: getCouncilMembers
+      summary: Council board roster
+      description: Returns the current member roster for the council or board.
+      tags: [Councils]
+      parameters:
+        - $ref: '#/components/parameters/CouncilIdPath'
+      responses:
+        "200":
+          description: Board member roster.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BoardMember'
+                  meta:
+                    $ref: '#/components/schemas/SuccessMeta'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /councils/{id}/vacancies:
+    get:
+      operationId: getCouncilVacancies
+      summary: Council open seats
+      description: Returns open or pending seat vacancies for the council.
+      tags: [Councils]
+      parameters:
+        - $ref: '#/components/parameters/CouncilIdPath'
+      responses:
+        "200":
+          description: List of vacancies.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Vacancy'
+                  meta:
+                    $ref: '#/components/schemas/SuccessMeta'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  # --------------------------------------------------------------------------
+  # Topics
+  # --------------------------------------------------------------------------
+
+  /topics:
+    get:
+      operationId: listTopics
+      summary: List all topics
+      description: Returns every topic in display order with aggregate counts.
+      tags: [Topics]
+      responses:
+        "200":
+          description: All topics.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Topic'
+                  meta:
+                    $ref: '#/components/schemas/SuccessMeta'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /topics/{slug}:
+    get:
+      operationId: getTopic
+      summary: Topic detail
+      description: Returns a topic with its full description and a list of councils mapped to it.
+      tags: [Topics]
+      parameters:
+        - $ref: '#/components/parameters/TopicSlugPath'
+      responses:
+        "200":
+          description: Topic detail with councils.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TopicDetail'
+                  meta:
+                    $ref: '#/components/schemas/SuccessMeta'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /topics/{slug}/meetings:
+    get:
+      operationId: getTopicMeetings
+      summary: Meetings for a topic
+      description: Returns meetings tagged with the given topic. Accepts the same filters as `GET /meetings`.
+      tags: [Topics]
+      parameters:
+        - $ref: '#/components/parameters/TopicSlugPath'
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: council_id
+          in: query
+          schema:
+            type: integer
+        - name: q
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/OffsetParam'
+      responses:
+        "200":
+          description: Paginated meetings for topic.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MeetingListItem'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  # --------------------------------------------------------------------------
+  # Subscriptions
+  # --------------------------------------------------------------------------
+
+  /subscriptions:
+    post:
+      operationId: createSubscription
+      summary: Create subscription
+      description: |
+        Creates a new notification subscription. A double opt-in confirmation
+        message is sent to the supplied email and/or phone number immediately
+        after creation. The subscription is inactive until confirmed.
+
+        At least one of `council_ids` or `topics` must be non-empty.
+      tags: [Subscriptions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionCreateBody'
+            examples:
+              email_immediate:
+                summary: Email subscriber, immediate notifications
+                value:
+                  email: "resident@example.com"
+                  channels: ["email"]
+                  council_ids: [12, 45]
+                  topics: ["housing"]
+                  frequency: "immediate"
+                  source: "civi.me"
+              sms_daily:
+                summary: SMS subscriber, daily digest
+                value:
+                  phone: "+18085550100"
+                  channels: ["sms"]
+                  council_ids: [12]
+                  frequency: "daily"
+      responses:
+        "201":
+          description: Subscription created and pending confirmation.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/SubscriptionCreated'
+                  meta:
+                    $ref: '#/components/schemas/SuccessMeta'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /subscriptions/confirm:
+    get:
+      operationId: confirmSubscription
+      summary: Confirm subscription (double opt-in)
+      description: |
+        Validates the confirmation token from the opt-in email/SMS and activates
+        the subscription. On success, redirects the user to the civi.me
+        confirmation page. This endpoint is public; no API key is required.
+      tags: [Subscriptions]
+      security: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: Confirmation token from the opt-in message.
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to civi.me confirmation page.
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+              description: civi.me URL indicating success or failure.
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /subscriptions/unsubscribe:
+    get:
+      operationId: unsubscribeOneClick
+      summary: One-click unsubscribe
+      description: |
+        Immediately deactivates a subscription via the token from any notification
+        message footer. Designed to satisfy RFC 8058 one-click unsubscribe
+        requirements. On success, redirects to civi.me. This endpoint is public;
+        no API key is required.
+      tags: [Subscriptions]
+      security: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: Manage token from the notification footer.
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to civi.me unsubscribe confirmation page.
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /subscriptions/{id}:
+    get:
+      operationId: getSubscription
+      summary: Get subscription details
+      description: |
+        Returns the current subscription details. Requires the subscriber's
+        `manage_token` (not the API key) passed as the `token` query parameter.
+      tags: [Subscriptions]
+      security:
+        - ManageToken: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionIdPath'
+        - $ref: '#/components/parameters/ManageTokenQuery'
+      responses:
+        "200":
+          description: Subscription details.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/SubscriptionDetail'
+                  meta:
+                    $ref: '#/components/schemas/SuccessMeta'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+    patch:
+      operationId: updateSubscription
+      summary: Update subscription settings
+      description: |
+        Updates contact info, notification channels, and/or frequency. Only
+        fields included in the request body are changed. Requires the subscriber's
+        `manage_token`.
+      tags: [Subscriptions]
+      security:
+        - ManageToken: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionIdPath'
+        - $ref: '#/components/parameters/ManageTokenQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionUpdateBody'
+            example:
+              frequency: "weekly"
+              channels: ["email", "sms"]
+      responses:
+        "200":
+          description: Updated subscription details.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/SubscriptionDetail'
+                  meta:
+                    $ref: '#/components/schemas/SuccessMeta'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      operationId: deleteSubscription
+      summary: Unsubscribe (delete subscription)
+      description: |
+        Permanently deactivates the subscription and removes all notification
+        preferences. Requires the subscriber's `manage_token`. On success returns
+        204 No Content.
+      tags: [Subscriptions]
+      security:
+        - ManageToken: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionIdPath'
+        - $ref: '#/components/parameters/ManageTokenQuery'
+      responses:
+        "204":
+          description: Subscription deleted successfully. No response body.
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /subscriptions/{id}/councils:
+    put:
+      operationId: replaceSubscriptionCouncils
+      summary: Replace council list
+      description: |
+        Replaces the subscriber's entire council watchlist with the supplied
+        array. Send an empty array to remove all councils. Requires the
+        subscriber's `manage_token`.
+      tags: [Subscriptions]
+      security:
+        - ManageToken: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionIdPath'
+        - $ref: '#/components/parameters/ManageTokenQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CouncilReplaceBody'
+            example:
+              council_ids: [12, 45, 78]
+      responses:
+        "200":
+          description: Updated subscription details.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/SubscriptionDetail'
+                  meta:
+                    $ref: '#/components/schemas/SuccessMeta'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  # --------------------------------------------------------------------------
+  # Webhooks
+  # --------------------------------------------------------------------------
+
+  /webhooks/sendgrid:
+    post:
+      operationId: sendgridWebhook
+      summary: SendGrid event webhook
+      description: |
+        Receives SendGrid Event Webhook payloads (delivered, bounced, spam
+        reported, etc.) to update delivery status and manage suppression lists.
+        This endpoint is public — authentication is performed via SendGrid's
+        webhook signature verification header, not the API key.
+      tags: [Webhooks]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              description: Array of SendGrid event objects (as per SendGrid's Event Webhook schema).
+              items:
+                type: object
+                additionalProperties: true
+      responses:
+        "200":
+          description: Events accepted.
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /webhooks/twilio:
+    post:
+      operationId: twilioWebhook
+      summary: Twilio inbound SMS webhook
+      description: |
+        Receives inbound SMS messages from Twilio (e.g. STOP, HELP, UNSTOP
+        replies). Authentication is performed via Twilio's request signature
+        header, not the API key. Responds with TwiML.
+      tags: [Webhooks]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              description: Twilio inbound SMS parameters (as per Twilio's webhook spec).
+              properties:
+                MessageSid:
+                  type: string
+                From:
+                  type: string
+                  description: Sender's E.164 phone number.
+                To:
+                  type: string
+                  description: Receiving Twilio number.
+                Body:
+                  type: string
+                  description: SMS body text (e.g. "STOP", "HELP").
+              additionalProperties: true
+      responses:
+        "200":
+          description: TwiML response.
+          content:
+            text/xml:
+              schema:
+                type: string
+                example: "<Response></Response>"
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+# ---------------------------------------------------------------------------
+# Tags (display order in docs)
+# ---------------------------------------------------------------------------
+tags:
+  - name: System
+    description: Health and statistics endpoints. No authentication required.
+  - name: Meetings
+    description: Browse and retrieve government meeting records.
+  - name: Councils
+    description: Boards, commissions, councils, and other government bodies.
+  - name: Topics
+    description: Civic topic taxonomy used to tag meetings and councils.
+  - name: Subscriptions
+    description: Resident notification subscription management.
+  - name: Webhooks
+    description: Inbound webhooks from third-party delivery providers.
