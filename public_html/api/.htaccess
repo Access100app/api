@@ -1,0 +1,28 @@
+# Access100 REST API - URL Rewriting
+#
+# Routes all /api/v1/* requests to index.php for processing.
+# Blocks direct access to config files and internal directories.
+
+RewriteEngine On
+
+# ─── Security: Block direct access to sensitive files ─────────────
+# Deny access to config.php, middleware, services, etc.
+RewriteRule ^config\.php$ - [F,L]
+RewriteRule ^middleware/ - [F,L]
+RewriteRule ^services/ - [F,L]
+RewriteRule ^cron/ - [F,L]
+RewriteRule ^migrations/ - [F,L]
+RewriteRule ^endpoints/ - [F,L]
+
+# ─── API Routing ──────────────────────────────────────────────────
+# If the request is not for an existing file or directory,
+# route everything through index.php.
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [QSA,L]
+
+# ─── Security Headers ────────────────────────────────────────────
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "DENY"
+</IfModule>

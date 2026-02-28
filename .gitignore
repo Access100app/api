@@ -1,0 +1,34 @@
+# Environment & secrets
+.env
+
+# Database dumps
+*.sql
+*.sql.gz
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Docker volumes
+db_data/
+
+# Temp files
+/tmp/
+*.log
+*.csv
+
+# Non-API code on shared hosting
+public_html/hjco/
+public_html/checker/
+public_html/ideas/
+public_html/default.php
+public_html/index.html
+
+# Legacy meetings frontend (has hardcoded Hostinger credentials)
+public_html/meetings/

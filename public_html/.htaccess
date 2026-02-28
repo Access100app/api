@@ -1,0 +1,10 @@
+RewriteEngine On
+
+# ─── API Routing ──────────────────────────────────────────────────
+# Route all /api/v1/* requests to the API router
+RewriteRule ^api/v1(/.*)?$ api/index.php [QSA,L]
+
+# ─── Existing: Extensionless PHP URLs ────────────────────────────
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}\.php -f
+RewriteRule ^(.*)$ $1.php [NC,L]
