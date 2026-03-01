@@ -59,20 +59,22 @@ unset($_api_keys);
 // Falls back to the production origin list when the env var is absent.
 $_cors_origins = getenv('CORS_ALLOWED_ORIGINS')
     ? array_map('trim', explode(',', getenv('CORS_ALLOWED_ORIGINS')))
-    : ['https://civi.me', 'https://www.civi.me', 'https://app.access100.app'];
+    : ['https://civi.me', 'https://www.civi.me', 'https://access100.app'];
 define('CORS_ALLOWED_ORIGINS', $_cors_origins);
 unset($_cors_origins);
 
 // ─── Rate Limiting ───────────────────────────────────────────────────
 // Requests per window (per IP + API key combination)
-define('RATE_LIMIT_MAX_REQUESTS', (int) (getenv('RATE_LIMIT_MAX_REQUESTS') ?: 100));
+define('RATE_LIMIT_MAX_REQUESTS', (int) (getenv('RATE_LIMIT_MAX_REQUESTS') ?: 1000));
 // Window duration in seconds (15 minutes)
 define('RATE_LIMIT_WINDOW_SECONDS', 900);
 
-// ─── SendGrid ────────────────────────────────────────────────────────
-define('SENDGRID_API_KEY', getenv('SENDGRID_API_KEY') ?: 'CHANGE_ME');
-define('SENDGRID_FROM_CIVIME', getenv('SENDGRID_FROM_EMAIL') ?: 'alert@civi.me');
-define('SENDGRID_FROM_ACCESS100', 'alert@access100.app');
+// ─── Gmail API (OAuth2 Refresh Token) ────────────────────────────────
+define('GMAIL_CLIENT_ID', getenv('GMAIL_CLIENT_ID') ?: 'CHANGE_ME');
+define('GMAIL_CLIENT_SECRET', getenv('GMAIL_CLIENT_SECRET') ?: 'CHANGE_ME');
+define('GMAIL_REFRESH_TOKEN', getenv('GMAIL_REFRESH_TOKEN') ?: 'CHANGE_ME');
+define('GMAIL_FROM_EMAIL', getenv('GMAIL_FROM_EMAIL') ?: 'email@access100.org');
+define('GMAIL_FROM_NAME', getenv('GMAIL_FROM_NAME') ?: 'civi.me');
 
 // ─── Twilio ──────────────────────────────────────────────────────────
 define('TWILIO_ACCOUNT_SID', getenv('TWILIO_ACCOUNT_SID') ?: 'CHANGE_ME');
@@ -85,7 +87,7 @@ define('CLAUDE_API_KEY', getenv('CLAUDE_API_KEY') ?: 'CHANGE_ME');
 // ─── API Version & URL ───────────────────────────────────────────────
 define('API_VERSION', 'v1');
 define('API_BASE_PATH', '/api/v1');
-define('API_BASE_URL', getenv('API_BASE_URL') ?: 'https://app.access100.app/api/v1');
+define('API_BASE_URL', getenv('API_BASE_URL') ?: 'https://access100.app/api/v1');
 
 
 // =====================================================================
