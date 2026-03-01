@@ -1,18 +1,212 @@
 <?php
 /**
- * Access100 API - Email Service (SendGrid)
+ * Access100 API - Email Service (Gmail API)
  *
- * SendGrid HTTP API v3 integration for transactional email.
- * No external libraries — uses cURL directly (no Composer in this project).
+ * Gmail API integration via OAuth2 refresh token. No external libraries
+ * — uses cURL directly (no Composer in this project).
  *
  * Functions:
  *   send_confirmation_email($email, $confirm_token, $source)
  *   send_meeting_notification($email, $meeting, $manage_token, $source)
  *   send_digest($email, $meetings, $manage_token, $frequency, $source)
- *   handle_sendgrid_webhook()  — bounce/complaint handler
  *
- * Requires: config.php loaded (SENDGRID_API_KEY, SENDGRID_FROM_*, API_BASE_URL)
+ * Requires: config.php loaded (GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET,
+ *           GMAIL_REFRESH_TOKEN, GMAIL_FROM_EMAIL, GMAIL_FROM_NAME, API_BASE_URL)
  */
+
+
+// =====================================================================
+// Gmail API Transport
+// =====================================================================
+
+/**
+ * Get an OAuth2 access token for the Gmail API using a refresh token.
+ *
+ * Exchanges the stored refresh token for a short-lived access token.
+ * Caches the token in a static variable for the lifetime of the request.
+ *
+ * @return string|false Access token on success, false on failure
+ */
+function get_gmail_access_token(): string|false
+{
+    static $cached_token = null;
+    static $cached_expiry = 0;
+
+    if ($cached_token !== null && time() < $cached_expiry - 30) {
+        return $cached_token;
+    }
+
+    if (GMAIL_CLIENT_ID === 'CHANGE_ME' || GMAIL_REFRESH_TOKEN === 'CHANGE_ME') {
+        error_log('Gmail: OAuth2 credentials not configured — skipping email');
+        return false;
+    }
+
+    $ch = curl_init('https://oauth2.googleapis.com/token');
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POSTFIELDS     => http_build_query([
+            'client_id'     => GMAIL_CLIENT_ID,
+            'client_secret' => GMAIL_CLIENT_SECRET,
+            'refresh_token' => GMAIL_REFRESH_TOKEN,
+            'grant_type'    => 'refresh_token',
+        ]),
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/x-www-form-urlencoded'],
+        CURLOPT_TIMEOUT        => 10,
+        CURLOPT_CONNECTTIMEOUT => 5,
+    ]);
+
+    $response   = curl_exec($ch);
+    $http_code  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curl_error = curl_error($ch);
+    curl_close($ch);
+
+    if ($curl_error) {
+        error_log('Gmail: Token refresh cURL error: ' . $curl_error);
+        return false;
+    }
+
+    if ($http_code !== 200) {
+        error_log('Gmail: Token refresh failed (HTTP ' . $http_code . '): ' . $response);
+        return false;
+    }
+
+    $token_data = json_decode($response, true);
+    if (empty($token_data['access_token'])) {
+        error_log('Gmail: Token refresh returned no access_token');
+        return false;
+    }
+
+    $cached_token  = $token_data['access_token'];
+    $cached_expiry = time() + ($token_data['expires_in'] ?? 3600);
+
+    return $cached_token;
+}
+
+/**
+ * Base64url-encode a string (URL-safe, no padding).
+ *
+ * @param string $data Raw data
+ * @return string Base64url-encoded string
+ */
+function base64url_encode(string $data): string
+{
+    return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
+}
+
+/**
+ * Build an RFC 2822 MIME message (multipart/alternative: text + HTML).
+ *
+ * @param string      $from_email     Sender email
+ * @param string      $from_name      Sender display name
+ * @param string      $to_email       Recipient email
+ * @param string      $subject        Email subject
+ * @param string      $html_content   HTML body
+ * @param string      $text_content   Plain text body
+ * @param string|null $unsubscribe_url One-click unsubscribe URL (RFC 8058)
+ * @return string Raw RFC 2822 message
+ */
+function build_mime_message(
+    string $from_email,
+    string $from_name,
+    string $to_email,
+    string $subject,
+    string $html_content,
+    string $text_content,
+    ?string $unsubscribe_url = null
+): string {
+    $boundary = 'boundary_' . bin2hex(random_bytes(16));
+
+    $headers  = "From: {$from_name} <{$from_email}>\r\n";
+    $headers .= "To: {$to_email}\r\n";
+    $headers .= "Subject: {$subject}\r\n";
+    $headers .= "MIME-Version: 1.0\r\n";
+    $headers .= "Content-Type: multipart/alternative; boundary=\"{$boundary}\"\r\n";
+
+    // RFC 8058 List-Unsubscribe headers (CAN-SPAM / Gmail one-click unsubscribe)
+    if ($unsubscribe_url !== null) {
+        $headers .= "List-Unsubscribe: <{$unsubscribe_url}>\r\n";
+        $headers .= "List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n";
+    }
+
+    $body  = "--{$boundary}\r\n";
+    $body .= "Content-Type: text/plain; charset=UTF-8\r\n";
+    $body .= "Content-Transfer-Encoding: quoted-printable\r\n\r\n";
+    $body .= quoted_printable_encode($text_content) . "\r\n";
+    $body .= "--{$boundary}\r\n";
+    $body .= "Content-Type: text/html; charset=UTF-8\r\n";
+    $body .= "Content-Transfer-Encoding: quoted-printable\r\n\r\n";
+    $body .= quoted_printable_encode($html_content) . "\r\n";
+    $body .= "--{$boundary}--\r\n";
+
+    return $headers . "\r\n" . $body;
+}
+
+/**
+ * Send an email via the Gmail API using a service account.
+ *
+ * @param string      $to_email       Recipient email
+ * @param string      $subject        Email subject
+ * @param string      $html_content   HTML body
+ * @param string      $text_content   Plain text body
+ * @param string|null $unsubscribe_url One-click unsubscribe URL (RFC 8058)
+ * @return bool True on success (2xx response), false on failure
+ */
+function gmail_send(
+    string $to_email,
+    string $subject,
+    string $html_content,
+    string $text_content,
+    ?string $unsubscribe_url = null
+): bool {
+    $access_token = get_gmail_access_token();
+    if ($access_token === false) {
+        error_log('Gmail: Cannot send — failed to get access token. Skipping email to ' . $to_email);
+        return false;
+    }
+
+    $raw_message = build_mime_message(
+        GMAIL_FROM_EMAIL,
+        GMAIL_FROM_NAME,
+        $to_email,
+        $subject,
+        $html_content,
+        $text_content,
+        $unsubscribe_url
+    );
+
+    $encoded_message = base64url_encode($raw_message);
+
+    $ch = curl_init('https://gmail.googleapis.com/gmail/v1/users/me/messages/send');
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER     => [
+            'Authorization: Bearer ' . $access_token,
+            'Content-Type: application/json',
+        ],
+        CURLOPT_POSTFIELDS     => json_encode(['raw' => $encoded_message]),
+        CURLOPT_TIMEOUT        => 15,
+        CURLOPT_CONNECTTIMEOUT => 5,
+    ]);
+
+    $response   = curl_exec($ch);
+    $http_code  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curl_error = curl_error($ch);
+    curl_close($ch);
+
+    if ($curl_error) {
+        error_log('Gmail: cURL error sending to ' . $to_email . ': ' . $curl_error);
+        return false;
+    }
+
+    if ($http_code >= 200 && $http_code < 300) {
+        return true;
+    }
+
+    error_log('Gmail: API error (HTTP ' . $http_code . ') sending to ' . $to_email . ': ' . $response);
+    return false;
+}
 
 
 // =====================================================================
@@ -24,14 +218,12 @@
  *
  * @param string $email         Recipient email address
  * @param string $confirm_token 64-char confirmation token
- * @param string $source        'civime' or 'access100' — determines sender identity
+ * @param string $source        'civime' or 'access100' — determines branding
  * @return bool True on success, false on failure
  */
 function send_confirmation_email(string $email, string $confirm_token, string $source = 'access100'): bool
 {
     $confirm_url = API_BASE_URL . '/subscriptions/confirm?token=' . urlencode($confirm_token);
-    $from_email  = ($source === 'civime') ? SENDGRID_FROM_CIVIME : SENDGRID_FROM_ACCESS100;
-    $from_name   = ($source === 'civime') ? 'civi.me' : 'Access100';
 
     $subject = 'Confirm your meeting notification subscription';
 
@@ -54,7 +246,7 @@ function send_confirmation_email(string $email, string $confirm_token, string $s
         . "Click this link to confirm: {$confirm_url}\n\n"
         . "If you didn't request this, you can safely ignore this email.";
 
-    return sendgrid_send($from_email, $from_name, $email, $subject, $html, $text);
+    return gmail_send($email, $subject, $html, $text);
 }
 
 
@@ -73,9 +265,6 @@ function send_confirmation_email(string $email, string $confirm_token, string $s
  */
 function send_meeting_notification(string $email, array $meeting, string $manage_token, string $source = 'access100'): bool
 {
-    $from_email = ($source === 'civime') ? SENDGRID_FROM_CIVIME : SENDGRID_FROM_ACCESS100;
-    $from_name  = ($source === 'civime') ? 'civi.me' : 'Access100';
-
     $date_formatted = date('l, F j, Y', strtotime($meeting['meeting_date']));
     $time_formatted = !empty($meeting['meeting_time'])
         ? date('g:i A', strtotime($meeting['meeting_time']))
@@ -115,10 +304,7 @@ function send_meeting_notification(string $email, array $meeting, string $manage
         . "View details: {$meeting_url}\n\n"
         . "Unsubscribe: {$unsubscribe_url}";
 
-    return sendgrid_send(
-        $from_email, $from_name, $email, $subject, $html, $text,
-        $unsubscribe_url
-    );
+    return gmail_send($email, $subject, $html, $text, $unsubscribe_url);
 }
 
 
@@ -138,9 +324,6 @@ function send_meeting_notification(string $email, array $meeting, string $manage
  */
 function send_digest(string $email, array $meetings, string $manage_token, string $frequency = 'daily', string $source = 'access100'): bool
 {
-    $from_email = ($source === 'civime') ? SENDGRID_FROM_CIVIME : SENDGRID_FROM_ACCESS100;
-    $from_name  = ($source === 'civime') ? 'civi.me' : 'Access100';
-
     $count = count($meetings);
     $label = ($frequency === 'weekly') ? 'Weekly' : 'Daily';
     $subject = "{$label} Digest: {$count} new meeting" . ($count !== 1 ? 's' : '') . ' posted';
@@ -183,160 +366,31 @@ function send_digest(string $email, array $meetings, string $manage_token, strin
         . $meetings_text
         . "Unsubscribe: {$unsubscribe_url}";
 
-    return sendgrid_send(
-        $from_email, $from_name, $email, $subject, $html, $text,
-        $unsubscribe_url
-    );
+    return gmail_send($email, $subject, $html, $text, $unsubscribe_url);
 }
 
 
 // =====================================================================
-// SendGrid Webhook Handler (bounces + complaints)
+// Admin Notification Email
 // =====================================================================
 
 /**
- * Process SendGrid event webhook to handle bounces and spam complaints.
+ * Send a plain-text admin notification email.
  *
- * Call this from a dedicated webhook endpoint. SendGrid POSTs an array
- * of event objects. We look for bounce/dropped/spam_report events and
- * deactivate the affected user's subscriptions.
+ * Delivers to GMAIL_FROM_EMAIL (the admin address). Used to alert
+ * the admin when someone subscribes or confirms.
  *
- * @return void Outputs JSON response
+ * @param string $subject Email subject line
+ * @param string $body    Plain-text email body
+ * @return bool True on success, false on failure
  */
-function handle_sendgrid_webhook(): void
+function send_admin_notification(string $subject, string $body): bool
 {
-    $raw = file_get_contents('php://input');
-    $events = json_decode($raw, true);
+    $to = GMAIL_FROM_EMAIL;
+    $html = '<pre style="font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, sans-serif; font-size: 14px; line-height: 1.6; white-space: pre-wrap;">'
+        . htmlspecialchars($body) . '</pre>';
 
-    if (!is_array($events)) {
-        http_response_code(400);
-        echo json_encode(['error' => 'Invalid payload']);
-        exit;
-    }
-
-    $deactivate_types = ['bounce', 'dropped', 'spamreport'];
-    $affected_emails  = [];
-
-    foreach ($events as $event) {
-        if (isset($event['event']) && in_array($event['event'], $deactivate_types, true)) {
-            $email = $event['email'] ?? null;
-            if ($email && !in_array($email, $affected_emails, true)) {
-                $affected_emails[] = $email;
-            }
-        }
-    }
-
-    if (!empty($affected_emails)) {
-        try {
-            $pdo = get_db();
-            $placeholders = implode(',', array_fill(0, count($affected_emails), '?'));
-
-            // Deactivate all subscriptions for bounced/complained users
-            $stmt = $pdo->prepare("
-                UPDATE subscriptions SET active = FALSE
-                WHERE user_id IN (
-                    SELECT id FROM users WHERE email IN ({$placeholders})
-                )
-            ");
-            $stmt->execute($affected_emails);
-
-            error_log('SendGrid webhook: deactivated subscriptions for ' . count($affected_emails) . ' email(s)');
-        } catch (PDOException $e) {
-            error_log('SendGrid webhook DB error: ' . $e->getMessage());
-        }
-    }
-
-    http_response_code(200);
-    echo json_encode(['processed' => count($affected_emails)]);
-    exit;
-}
-
-
-// =====================================================================
-// SendGrid HTTP API v3 Transport
-// =====================================================================
-
-/**
- * Send an email via SendGrid's HTTP API v3.
- *
- * @param string      $from_email     Sender email
- * @param string      $from_name      Sender display name
- * @param string      $to_email       Recipient email
- * @param string      $subject        Email subject
- * @param string      $html_content   HTML body
- * @param string      $text_content   Plain text body
- * @param string|null $unsubscribe_url One-click unsubscribe URL (RFC 8058)
- * @return bool True on success (2xx response), false on failure
- */
-function sendgrid_send(
-    string $from_email,
-    string $from_name,
-    string $to_email,
-    string $subject,
-    string $html_content,
-    string $text_content,
-    ?string $unsubscribe_url = null
-): bool {
-    if (SENDGRID_API_KEY === 'CHANGE_ME') {
-        error_log('SendGrid: API key not configured — skipping email to ' . $to_email);
-        return false;
-    }
-
-    $payload = [
-        'personalizations' => [
-            [
-                'to' => [['email' => $to_email]],
-            ],
-        ],
-        'from' => [
-            'email' => $from_email,
-            'name'  => $from_name,
-        ],
-        'subject' => $subject,
-        'content' => [
-            ['type' => 'text/plain', 'value' => $text_content],
-            ['type' => 'text/html',  'value' => $html_content],
-        ],
-    ];
-
-    // RFC 8058 List-Unsubscribe headers (CAN-SPAM compliance)
-    if ($unsubscribe_url !== null) {
-        $payload['headers'] = [
-            'List-Unsubscribe'      => '<' . $unsubscribe_url . '>',
-            'List-Unsubscribe-Post' => 'List-Unsubscribe=One-Click',
-        ];
-    }
-
-    $ch = curl_init('https://api.sendgrid.com/v3/mail/send');
-    curl_setopt_array($ch, [
-        CURLOPT_POST           => true,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HTTPHEADER     => [
-            'Authorization: Bearer ' . SENDGRID_API_KEY,
-            'Content-Type: application/json',
-        ],
-        CURLOPT_POSTFIELDS     => json_encode($payload),
-        CURLOPT_TIMEOUT        => 10,
-        CURLOPT_CONNECTTIMEOUT => 5,
-    ]);
-
-    $response    = curl_exec($ch);
-    $http_code   = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curl_error  = curl_error($ch);
-    curl_close($ch);
-
-    if ($curl_error) {
-        error_log('SendGrid cURL error: ' . $curl_error);
-        return false;
-    }
-
-    // SendGrid returns 202 Accepted on success
-    if ($http_code >= 200 && $http_code < 300) {
-        return true;
-    }
-
-    error_log('SendGrid API error (HTTP ' . $http_code . '): ' . $response);
-    return false;
+    return gmail_send($to, $subject, $html, $body);
 }
 
 

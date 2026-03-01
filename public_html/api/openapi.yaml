@@ -71,7 +71,7 @@ info:
     url: https://civi.me
 
 servers:
-  - url: https://app.access100.app/api/v1
+  - url: https://access100.app/api/v1
     description: Production
 
 # ---------------------------------------------------------------------------

@@ -137,7 +137,7 @@ Twilio requires registration for A2P (Application-to-Person) messaging to avoid 
 6. [ ] Terms of service page created
 7. [ ] Twilio A2P 10DLC campaign registered and approved
 8. [ ] Twilio phone number purchased and assigned
-9. [ ] Twilio webhook URL configured: `https://app.access100.app/api/v1/webhooks/twilio`
+9. [ ] Twilio webhook URL configured: `https://access100.app/api/v1/webhooks/twilio`
 10. [ ] Test full flow: subscribe → confirm SMS → YES reply → meeting alert → STOP → deactivation
 
 ---
@@ -145,7 +145,7 @@ Twilio requires registration for A2P (Application-to-Person) messaging to avoid 
 ## Message Templates (for Twilio 10DLC approval)
 
 **Confirmation:**
-> civi.me: You subscribed to meeting alerts. Tap to confirm: https://app.access100.app/api/v1/subscriptions/confirm?token=xxx Reply STOP to cancel.
+> civi.me: You subscribed to meeting alerts. Tap to confirm: https://access100.app/api/v1/subscriptions/confirm?token=xxx Reply STOP to cancel.
 
 **Meeting alert:**
 > civi.me: New meeting — Board of Education, Mar 15 1:30 PM. Details: https://civi.me/m/12345 Reply STOP to unsubscribe.

@@ -1,6 +1,6 @@
 # Access100 REST API Guide
 
-**Base URL:** `https://app.access100.app/api/v1`
+**Base URL:** `https://access100.app/api/v1`
 
 The Access100 API provides programmatic access to Hawaii government meeting data, council information, AI-generated meeting summaries, topic-based discovery, and notification subscriptions.
 
@@ -899,7 +899,7 @@ The API accepts cross-origin requests from configured origins:
 
 - `https://civi.me`
 - `https://www.civi.me`
-- `https://app.access100.app`
+- `https://access100.app`
 
 Preflight `OPTIONS` requests are handled automatically with a `204` response. The `Access-Control-Max-Age` is set to 24 hours.
 

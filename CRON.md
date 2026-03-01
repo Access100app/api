@@ -95,7 +95,7 @@ RUN chmod 0644 /etc/cron.d/access100 && crontab /etc/cron.d/access100
 Check that crons are running by querying the `/health` endpoint:
 
 ```bash
-curl -s https://app.access100.app/api/v1/health | jq '.data.last_scrape'
+curl -s https://access100.app/api/v1/health | jq '.data.last_scrape'
 ```
 
 The `last_scrape` field shows the last successful `notify.php` run. If it's more than 30 minutes old, the cron may be stuck.

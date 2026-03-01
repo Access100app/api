@@ -111,6 +111,7 @@ $endpoint_map = [
     'topics'        => __DIR__ . '/endpoints/topics.php',
     'subscriptions' => __DIR__ . '/endpoints/subscriptions.php',
     'webhooks'      => __DIR__ . '/endpoints/webhooks.php',
+    'admin'         => __DIR__ . '/endpoints/admin.php',
 ];
 
 // Check if the resource exists
@@ -127,7 +128,8 @@ if (!isset($endpoint_map[$resource])) {
                 'councils'      => API_BASE_PATH . '/councils',
                 'topics'        => API_BASE_PATH . '/topics',
                 'subscriptions' => API_BASE_PATH . '/subscriptions',
-                'webhooks'      => API_BASE_PATH . '/webhooks/sendgrid',
+                'webhooks'      => API_BASE_PATH . '/webhooks/twilio',
+                'admin'         => API_BASE_PATH . '/admin/subscribers',
             ],
         ]);
     }

@@ -296,6 +296,30 @@ function handle_confirm(array $query): void
         json_error(500, 'Database error during confirmation.');
     }
 
+    // Notify admin of confirmed subscription
+    $confirmed_contact = $user['email'] ?: $user['phone'];
+    // Fetch subscription details for the notification
+    $sub_stmt = $pdo->prepare("
+        SELECT c.name, s.channels, s.frequency
+        FROM subscriptions s
+        JOIN councils c ON s.council_id = c.id
+        WHERE s.user_id = ? AND s.active = TRUE
+        ORDER BY c.name ASC
+    ");
+    $sub_stmt->execute([$user['id']]);
+    $sub_rows = $sub_stmt->fetchAll();
+    $council_names = array_column($sub_rows, 'name');
+    $channels = !empty($sub_rows) ? $sub_rows[0]['channels'] : 'email';
+    $frequency = !empty($sub_rows) ? $sub_rows[0]['frequency'] : 'immediate';
+
+    $admin_body = "Subscriber confirmed:\n\n"
+        . "Email:     " . ($user['email'] ?: '(none)') . "\n"
+        . "Phone:     " . ($user['phone'] ?: '(none)') . "\n"
+        . "Channels:  {$channels}\n"
+        . "Frequency: {$frequency}\n"
+        . "Councils:  " . implode(', ', $council_names);
+    send_admin_notification('[civi.me] Subscriber confirmed: ' . $confirmed_contact, $admin_body);
+
     // Redirect to civi.me confirmation page
     $redirect_url = 'https://civi.me/notifications/confirmed';
     header('Location: ' . $redirect_url, true, 302);
