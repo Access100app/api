@@ -1,0 +1,28 @@
+# ─── Access100 API Cron Jobs ─────────────────────────────────────────
+# All times in UTC. Hawaii (HST) is UTC-10.
+
+# Scrape: eHawaii RSS feed polling (every 15 minutes)
+*/15 * * * * php /var/www/html/api/cron/scrape.php >> /var/log/access100-scrape.log 2>&1
+
+# Notify: change detection & immediate notifications (every 15 minutes)
+*/15 * * * * php /var/www/html/api/cron/notify.php >> /var/log/access100-notify.log 2>&1
+
+# Daily digest (7 AM HST = 5 PM UTC)
+0 17 * * * php /var/www/html/api/cron/digest.php >> /var/log/access100-digest.log 2>&1
+
+# Weekly digest (Monday 7 AM HST = Monday 5 PM UTC)
+0 17 * * 1 php /var/www/html/api/cron/weekly-digest.php >> /var/log/access100-weekly.log 2>&1
+
+# Meeting reminders (7 AM HST = 5 PM UTC)
+0 17 * * * php /var/www/html/api/cron/reminder.php >> /var/log/access100-reminder.log 2>&1
+
+# AI topic classification (2 AM HST = 12 PM UTC)
+0 12 * * * php /var/www/html/api/cron/classify-topics.php >> /var/log/access100-classify.log 2>&1
+
+# AI meeting summaries (3 AM HST = 1 PM UTC)
+0 13 * * * php /var/www/html/api/cron/summarize.php >> /var/log/access100-summarize.log 2>&1
+
+# Cleanup: rate limit files + old queue entries (3:30 AM HST = 1:30 PM UTC)
+30 13 * * * php /var/www/html/api/cron/cleanup.php >> /var/log/access100-cleanup.log 2>&1
+
+# Required trailing newline for cron

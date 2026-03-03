@@ -8,8 +8,12 @@ Add these entries to the server crontab (adjust paths for your deployment):
 
 ```crontab
 # ─── Access100 API Cron Jobs ─────────────────────────────────────────
+# All times in UTC. Hawaii (HST) is UTC-10.
 
-# Change detection & immediate notifications (every 15 minutes)
+# Scrape: eHawaii RSS feed polling (every 15 minutes)
+*/15 * * * * php /var/www/html/api/cron/scrape.php >> /var/log/access100-scrape.log 2>&1
+
+# Notify: change detection & immediate notifications (every 15 minutes)
 */15 * * * * php /var/www/html/api/cron/notify.php >> /var/log/access100-notify.log 2>&1
 
 # Daily digest (7 AM HST = 5 PM UTC)
@@ -18,17 +22,30 @@ Add these entries to the server crontab (adjust paths for your deployment):
 # Weekly digest (Monday 7 AM HST = Monday 5 PM UTC)
 0 17 * * 1 php /var/www/html/api/cron/weekly-digest.php >> /var/log/access100-weekly.log 2>&1
 
-# AI topic classification (daily at 2 AM HST = 12 PM UTC)
+# Meeting reminders (7 AM HST = 5 PM UTC)
+0 17 * * * php /var/www/html/api/cron/reminder.php >> /var/log/access100-reminder.log 2>&1
+
+# AI topic classification (2 AM HST = 12 PM UTC)
 0 12 * * * php /var/www/html/api/cron/classify-topics.php >> /var/log/access100-classify.log 2>&1
 
-# AI meeting summaries (daily at 3 AM HST = 1 PM UTC)
+# AI meeting summaries (3 AM HST = 1 PM UTC)
 0 13 * * * php /var/www/html/api/cron/summarize.php >> /var/log/access100-summarize.log 2>&1
 
-# Cleanup: rate limit files + old queue entries (daily at 3 AM HST = 1 PM UTC)
+# Cleanup: rate limit files + old queue entries (3:30 AM HST = 1:30 PM UTC)
 30 13 * * * php /var/www/html/api/cron/cleanup.php >> /var/log/access100-cleanup.log 2>&1
 ```
 
 ## Job Details
+
+### scrape.php — eHawaii RSS Feed Scraper
+
+- **Frequency**: Every 15 minutes
+- **What it does**:
+  1. Polls RSS feeds from calendar.ehawaii.gov for each active council
+  2. Parses new/updated meetings from the feeds
+  3. Fetches detail pages for attachments and full agenda text
+  4. Upserts meetings into the database
+- **Flags**: `--dry-run`, `--limit=N`, `--council=ID`
 
 ### notify.php — Change Detection & Immediate Notifications
 
@@ -73,6 +90,16 @@ Add these entries to the server crontab (adjust paths for your deployment):
 - **What it does**: Uses Claude API to generate plain-language summaries of meeting agendas
 - **Requires**: `CLAUDE_API_KEY` environment variable
 
+### reminder.php — Meeting Reminders
+
+- **Frequency**: Daily at 7 AM HST
+- **What it does**:
+  1. Gets today's date in Hawaii timezone
+  2. Finds all confirmed, unsent reminders where the meeting date is today
+  3. Sends a morning-of reminder email for each
+  4. Marks reminders as `sent = TRUE` with `sent_at` timestamp
+- **Flags**: `--dry-run`
+
 ### cleanup.php — Maintenance Cleanup
 
 - **Frequency**: Daily
@@ -82,12 +109,20 @@ Add these entries to the server crontab (adjust paths for your deployment):
 
 ## Docker Setup
 
-When running in Docker, add cron to the container or use a sidecar. Example Dockerfile addition:
+Cron runs inside the app container. The `Dockerfile` installs cron, copies the crontab, and `docker-entrypoint.sh` starts the cron daemon before handing off to Apache:
 
 ```dockerfile
-RUN apt-get update && apt-get install -y cron
+RUN apt-get update && apt-get install -y cron && rm -rf /var/lib/apt/lists/*
 COPY crontab /etc/cron.d/access100
 RUN chmod 0644 /etc/cron.d/access100 && crontab /etc/cron.d/access100
+COPY docker-entrypoint.sh /usr/local/bin/
+ENTRYPOINT ["docker-entrypoint.sh"]
+```
+
+After changing the Dockerfile or crontab, rebuild:
+
+```bash
+docker compose up -d --build
 ```
 
 ## Monitoring

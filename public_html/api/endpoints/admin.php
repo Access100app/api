@@ -7,6 +7,8 @@
  *   POST   /admin/subscribers            — create a subscriber (skip confirmation)
  *   PATCH  /admin/subscribers/{user_id}  — update subscriber fields
  *   DELETE /admin/subscribers/{user_id}  — soft-deactivate (default) or hard delete (?hard=true)
+ *   GET    /admin/reminders              — paginated list of reminders
+ *   DELETE /admin/reminders/{id}         — hard delete a reminder
  *
  * Requires: $route array from index.php, config.php loaded
  */
@@ -15,6 +17,7 @@ $allowed_methods = ['GET', 'POST', 'PATCH', 'DELETE'];
 if (!in_array($route['method'], $allowed_methods, true)) {
     json_error(405, 'Method not allowed.');
 }
+
 
 // ─── Route Dispatch ───────────────────────────────────────────────────────────
 
@@ -40,6 +43,16 @@ elseif ($resource_id === 'subscribers' && $sub_resource !== null && ctype_digit(
 // DELETE /admin/subscribers/{user_id} — deactivate or hard delete
 elseif ($resource_id === 'subscribers' && $sub_resource !== null && ctype_digit((string) $sub_resource) && $method === 'DELETE') {
     handle_deactivate_subscriber((int) $sub_resource, $route['query']);
+}
+
+// GET /admin/reminders — list all reminders
+elseif ($resource_id === 'reminders' && $sub_resource === null && $method === 'GET') {
+    handle_list_reminders($route['query']);
+}
+
+// DELETE /admin/reminders/{id} — hard delete a reminder
+elseif ($resource_id === 'reminders' && $sub_resource !== null && ctype_digit((string) $sub_resource) && $method === 'DELETE') {
+    handle_delete_reminder((int) $sub_resource);
 }
 
 else {
@@ -456,5 +469,116 @@ function handle_deactivate_subscriber(int $user_id, array $query): void
         'status'       => 'deactivated',
         'deactivated'  => $affected,
         'message'      => "Deactivated {$affected} subscription(s) for user {$user_id}.",
+    ]);
+}
+
+
+// =====================================================================
+// GET /admin/reminders — Paginated list of reminders
+// =====================================================================
+
+function handle_list_reminders(array $query): void
+{
+    $limit  = isset($query['limit']) ? min(max((int) $query['limit'], 1), 100) : 25;
+    $offset = isset($query['offset']) ? max((int) $query['offset'], 0) : 0;
+    $search = isset($query['q']) ? trim($query['q']) : '';
+    $confirmed = isset($query['confirmed']) ? trim($query['confirmed']) : '';
+
+    try {
+        $pdo = get_db();
+
+        // Build WHERE clause
+        $where_clauses = [];
+        $params = [];
+
+        if ($search !== '') {
+            $where_clauses[] = 'r.email LIKE ?';
+            $params[] = '%' . $search . '%';
+        }
+
+        if ($confirmed === 'true') {
+            $where_clauses[] = 'r.confirmed = TRUE';
+        } elseif ($confirmed === 'false') {
+            $where_clauses[] = 'r.confirmed = FALSE';
+        }
+
+        $where_sql = !empty($where_clauses) ? 'WHERE ' . implode(' AND ', $where_clauses) : '';
+
+        // Count total
+        $count_sql = "SELECT COUNT(*) FROM reminders r {$where_sql}";
+        $stmt = $pdo->prepare($count_sql);
+        $stmt->execute($params);
+        $total = (int) $stmt->fetchColumn();
+
+        // Fetch reminders joined to meetings and councils
+        $select_sql = "SELECT r.id, r.email, r.confirmed, r.source, r.created_at,
+                              m.title AS meeting_title, m.meeting_date,
+                              c.name AS council_name
+                       FROM reminders r
+                       JOIN meetings m ON r.meeting_id = m.id
+                       JOIN councils c ON m.council_id = c.id
+                       {$where_sql}
+                       ORDER BY r.created_at DESC
+                       LIMIT ? OFFSET ?";
+        $select_params = array_merge($params, [$limit, $offset]);
+        $stmt = $pdo->prepare($select_sql);
+        $stmt->execute($select_params);
+        $rows = $stmt->fetchAll();
+
+        $reminders = [];
+        foreach ($rows as $row) {
+            $reminders[] = [
+                'id'            => (int) $row['id'],
+                'email'         => $row['email'],
+                'meeting_title' => $row['meeting_title'],
+                'council_name'  => $row['council_name'],
+                'meeting_date'  => $row['meeting_date'],
+                'confirmed'     => (bool) $row['confirmed'],
+                'source'        => $row['source'],
+                'created_at'    => $row['created_at'],
+            ];
+        }
+
+    } catch (PDOException $e) {
+        error_log('Admin list reminders error: ' . $e->getMessage());
+        json_error(500, 'Database error while fetching reminders.');
+    }
+
+    json_response([
+        'reminders' => $reminders,
+    ], 200, [
+        'total'  => $total,
+        'limit'  => $limit,
+        'offset' => $offset,
+    ]);
+}
+
+
+// =====================================================================
+// DELETE /admin/reminders/{id} — Hard delete a reminder
+// =====================================================================
+
+function handle_delete_reminder(int $reminder_id): void
+{
+    try {
+        $pdo = get_db();
+
+        $stmt = $pdo->prepare("SELECT id FROM reminders WHERE id = ? LIMIT 1");
+        $stmt->execute([$reminder_id]);
+        if (!$stmt->fetch()) {
+            json_error(404, 'Reminder not found.');
+        }
+
+        $pdo->prepare("DELETE FROM reminders WHERE id = ?")->execute([$reminder_id]);
+
+    } catch (PDOException $e) {
+        error_log('Admin delete reminder error: ' . $e->getMessage());
+        json_error(500, 'Database error while deleting reminder.');
+    }
+
+    json_response([
+        'id'      => $reminder_id,
+        'status'  => 'deleted',
+        'message' => "Reminder {$reminder_id} permanently deleted.",
     ]);
 }

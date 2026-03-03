@@ -2,11 +2,11 @@
 /**
  * Access100 API - Meeting Reminder Cron
  *
- * Runs daily at 6 AM HST. Sends morning-of reminder emails for all
+ * Runs daily at 7 AM HST. Sends morning-of reminder emails for all
  * confirmed reminders whose meeting date is today.
  *
- * Crontab (6 AM HST = 4 PM UTC):
- *   0 16 * * * php /path/to/api/cron/reminder.php >> /var/log/access100-reminder.log 2>&1
+ * Crontab (7 AM HST = 5 PM UTC):
+ *   0 17 * * * php /path/to/api/cron/reminder.php >> /var/log/access100-reminder.log 2>&1
  *
  * Manual:
  *   php api/cron/reminder.php
