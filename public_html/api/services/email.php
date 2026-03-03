@@ -117,9 +117,11 @@ function build_mime_message(
 ): string {
     $boundary = 'boundary_' . bin2hex(random_bytes(16));
 
+    $encoded_subject = mb_encode_mimeheader($subject, 'UTF-8', 'B');
+
     $headers  = "From: {$from_name} <{$from_email}>\r\n";
     $headers .= "To: {$to_email}\r\n";
-    $headers .= "Subject: {$subject}\r\n";
+    $headers .= "Subject: {$encoded_subject}\r\n";
     $headers .= "MIME-Version: 1.0\r\n";
     $headers .= "Content-Type: multipart/alternative; boundary=\"{$boundary}\"\r\n";
 
