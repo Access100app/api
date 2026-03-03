@@ -18,7 +18,11 @@ define('RATE_LIMIT_DIR', sys_get_temp_dir() . '/access100_ratelimit');
 /**
  * Check and enforce rate limiting.
  *
- * Tracks request timestamps per client identity (IP + API key hash).
+ * For authenticated requests, tracks by API key label alone so that
+ * all traffic from a given consumer shares one bucket regardless of
+ * originating IP (important when running behind Docker/reverse proxy).
+ * For unauthenticated ("public") requests, tracks by IP.
+ *
  * If the client exceeds RATE_LIMIT_MAX_REQUESTS within RATE_LIMIT_WINDOW_SECONDS,
  * a 429 Too Many Requests response is sent and the script exits.
  *
@@ -31,10 +35,14 @@ define('RATE_LIMIT_DIR', sys_get_temp_dir() . '/access100_ratelimit');
  */
 function check_rate_limit(string $api_key_label = 'public'): void
 {
-    $ip = get_client_ip();
-
-    // Create a unique identifier for this client
-    $client_id = hash('sha256', $ip . '|' . $api_key_label);
+    // Authenticated consumers get their own bucket by API key label,
+    // avoiding shared-IP issues behind Docker/reverse proxies.
+    // Unauthenticated requests still track by IP.
+    if ($api_key_label !== 'public') {
+        $client_id = hash('sha256', 'apikey|' . $api_key_label);
+    } else {
+        $client_id = hash('sha256', 'ip|' . get_client_ip());
+    }
     $state_file = RATE_LIMIT_DIR . '/' . $client_id . '.json';
 
     // Ensure the rate limit directory exists

@@ -86,6 +86,9 @@ $is_public = in_array($resource, $public_routes, true);
 if ($resource === 'subscriptions' && in_array($resource_id, ['confirm', 'unsubscribe'], true)) {
     $is_public = true;
 }
+if ($resource === 'reminders' && $resource_id === 'confirm') {
+    $is_public = true;
+}
 if ($resource === 'webhooks') {
     $is_public = true;
 }
@@ -110,6 +113,7 @@ $endpoint_map = [
     'councils'      => __DIR__ . '/endpoints/councils.php',
     'topics'        => __DIR__ . '/endpoints/topics.php',
     'subscriptions' => __DIR__ . '/endpoints/subscriptions.php',
+    'reminders'     => __DIR__ . '/endpoints/reminders.php',
     'webhooks'      => __DIR__ . '/endpoints/webhooks.php',
     'admin'         => __DIR__ . '/endpoints/admin.php',
 ];
@@ -128,6 +132,7 @@ if (!isset($endpoint_map[$resource])) {
                 'councils'      => API_BASE_PATH . '/councils',
                 'topics'        => API_BASE_PATH . '/topics',
                 'subscriptions' => API_BASE_PATH . '/subscriptions',
+                'reminders'     => API_BASE_PATH . '/reminders',
                 'webhooks'      => API_BASE_PATH . '/webhooks/twilio',
                 'admin'         => API_BASE_PATH . '/admin/subscribers',
             ],

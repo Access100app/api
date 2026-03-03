@@ -371,6 +371,119 @@ function send_digest(string $email, array $meetings, string $manage_token, strin
 
 
 // =====================================================================
+// Reminder Confirmation Email
+// =====================================================================
+
+/**
+ * Send a confirmation email for a one-time meeting reminder.
+ *
+ * @param string $email         Recipient email
+ * @param string $confirm_token 64-char confirmation token
+ * @param array  $meeting       Meeting data (council_name, title, meeting_date, meeting_time)
+ * @param string $source        'civime' or 'access100'
+ * @return bool
+ */
+function send_reminder_confirmation_email(string $email, string $confirm_token, array $meeting, string $source = 'access100'): bool
+{
+    $confirm_url = API_BASE_URL . '/reminders/confirm?token=' . urlencode($confirm_token);
+
+    $date_formatted = date('l, F j, Y', strtotime($meeting['meeting_date']));
+    $time_formatted = !empty($meeting['meeting_time'])
+        ? date('g:i A', strtotime($meeting['meeting_time']))
+        : 'Time TBD';
+    $council_name = htmlspecialchars($meeting['council_name'] ?? 'Government Council');
+    $title        = htmlspecialchars($meeting['title'] ?? 'Meeting');
+
+    $subject = 'Confirm your meeting reminder: ' . ($meeting['council_name'] ?? 'Meeting') . ' — ' . date('M j', strtotime($meeting['meeting_date']));
+
+    $html = email_layout('Confirm Your Reminder', '
+        <p>You asked to be reminded about this meeting:</p>
+        <div style="background-color: #f8f9fa; border-left: 4px solid #0d6efd; padding: 16px; margin: 16px 0; border-radius: 4px;">
+            <p style="font-weight: 600; font-size: 16px; margin: 0 0 4px 0; color: #212529;">' . $council_name . '</p>
+            <p style="font-size: 15px; margin: 0 0 8px 0; color: #212529;">' . $title . '</p>
+            <p style="margin: 0; color: #495057;">' . $date_formatted . ' at ' . $time_formatted . '</p>
+        </div>
+        <p>Click the button below to confirm — we\'ll send you a reminder the morning of the meeting.</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin: 24px 0;">
+            <tr>
+                <td style="background-color: #0d6efd; border-radius: 6px;">
+                    <a href="' . htmlspecialchars($confirm_url) . '" style="display: inline-block; padding: 12px 24px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px;">Confirm Reminder</a>
+                </td>
+            </tr>
+        </table>
+        <p style="font-size: 13px; color: #6c757d;">If the button doesn\'t work, copy and paste this link into your browser:</p>
+        <p style="font-size: 13px; color: #6c757d; word-break: break-all;">' . htmlspecialchars($confirm_url) . '</p>
+        <p style="font-size: 13px; color: #6c757d;">If you didn\'t request this, you can safely ignore this email.</p>
+    ', $source);
+
+    $text = "Confirm your meeting reminder\n\n"
+        . "Meeting: {$meeting['council_name']} — {$meeting['title']}\n"
+        . "Date: {$date_formatted} at {$time_formatted}\n\n"
+        . "Click this link to confirm: {$confirm_url}\n\n"
+        . "We'll send you a reminder the morning of the meeting.\n\n"
+        . "If you didn't request this, you can safely ignore this email.";
+
+    return gmail_send($email, $subject, $html, $text);
+}
+
+
+// =====================================================================
+// Meeting Reminder Email (Morning-of)
+// =====================================================================
+
+/**
+ * Send a morning-of meeting reminder email.
+ *
+ * @param string $email   Recipient email
+ * @param array  $meeting Meeting data (council_name, title, meeting_date, meeting_time, location, state_id)
+ * @param string $source  'civime' or 'access100'
+ * @return bool
+ */
+function send_meeting_reminder(string $email, array $meeting, string $source = 'access100'): bool
+{
+    $date_formatted = date('l, F j, Y', strtotime($meeting['meeting_date']));
+    $time_formatted = !empty($meeting['meeting_time'])
+        ? date('g:i A', strtotime($meeting['meeting_time']))
+        : 'Time TBD';
+
+    $council_name = htmlspecialchars($meeting['council_name'] ?? 'Government Council');
+    $title        = htmlspecialchars($meeting['title'] ?? 'Meeting');
+    $location     = htmlspecialchars(strip_tags($meeting['location'] ?? 'Location TBD'));
+    $state_id     = (int) ($meeting['state_id'] ?? 0);
+    $meeting_url  = 'https://civi.me/meetings/' . $state_id;
+
+    $subject = "Reminder: {$meeting['council_name']} meets today at {$time_formatted}";
+
+    $html = email_layout('Meeting Today', '
+        <p>This is your reminder — this meeting is happening today:</p>
+        <div style="background-color: #f8f9fa; border-left: 4px solid #0d6efd; padding: 16px; margin: 16px 0; border-radius: 4px;">
+            <p style="font-weight: 600; font-size: 16px; margin: 0 0 4px 0; color: #212529;">' . $council_name . '</p>
+            <p style="font-size: 15px; margin: 0 0 8px 0; color: #212529;">' . $title . '</p>
+            <p style="margin: 0 0 4px 0; color: #495057;">' . $date_formatted . ' at ' . $time_formatted . '</p>
+            <p style="margin: 0; color: #495057;">' . $location . '</p>
+        </div>
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin: 16px 0;">
+            <tr>
+                <td style="background-color: #0d6efd; border-radius: 6px;">
+                    <a href="' . htmlspecialchars($meeting_url) . '" style="display: inline-block; padding: 10px 20px; color: #ffffff; text-decoration: none; font-weight: 600;">View Details &amp; Agenda</a>
+                </td>
+            </tr>
+        </table>
+        <p style="font-size: 13px; color: #6c757d;">This was a one-time reminder. Want ongoing notifications? <a href="https://civi.me/meetings/subscribe/" style="color: #0d6efd;">Subscribe to meeting alerts</a>.</p>
+    ', $source);
+
+    $text = "Meeting Today: {$meeting['council_name']}\n"
+        . "{$meeting['title']}\n"
+        . "{$date_formatted} at {$time_formatted}\n"
+        . "Location: " . strip_tags($meeting['location'] ?? 'TBD') . "\n\n"
+        . "View details: {$meeting_url}\n\n"
+        . "This was a one-time reminder. Subscribe for ongoing alerts: https://civi.me/meetings/subscribe/";
+
+    return gmail_send($email, $subject, $html, $text);
+}
+
+
+// =====================================================================
 // Admin Notification Email
 // =====================================================================
 
