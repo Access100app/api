@@ -1,6 +1,14 @@
 .env
+.env.*
 .git
+.gitignore
 .DS_Store
 node_modules
 *.log
+*.sql
+*.csv
 /tmp/
+scripts/
+public_html/
+README.md
+LICENSE

@@ -275,7 +275,7 @@ function send_meeting_notification(string $email, array $meeting, string $manage
     $council_name = htmlspecialchars($meeting['council_name'] ?? 'Government Council');
     $title        = htmlspecialchars($meeting['title'] ?? 'Meeting');
     $location     = htmlspecialchars(strip_tags($meeting['location'] ?? 'Location TBD'));
-    $state_id     = (int) ($meeting['state_id'] ?? 0);
+    $state_id     = rawurlencode($meeting['state_id'] ?? '');
 
     $meeting_url     = 'https://civi.me/meetings/' . $state_id;
     $unsubscribe_url = API_BASE_URL . '/subscriptions/unsubscribe?token=' . urlencode($manage_token);
@@ -341,7 +341,7 @@ function send_digest(string $email, array $meetings, string $manage_token, strin
         $time_fmt = !empty($m['meeting_time']) ? date('g:i A', strtotime($m['meeting_time'])) : 'TBD';
         $council  = htmlspecialchars($m['council_name'] ?? '');
         $title    = htmlspecialchars($m['title'] ?? '');
-        $url      = 'https://civi.me/meetings/' . (int) ($m['state_id'] ?? 0);
+        $url      = 'https://civi.me/meetings/' . rawurlencode($m['state_id'] ?? '');
 
         $meetings_html .= '
             <tr>
@@ -451,7 +451,7 @@ function send_meeting_reminder(string $email, array $meeting, string $source = '
     $council_name = htmlspecialchars($meeting['council_name'] ?? 'Government Council');
     $title        = htmlspecialchars($meeting['title'] ?? 'Meeting');
     $location     = htmlspecialchars(strip_tags($meeting['location'] ?? 'Location TBD'));
-    $state_id     = (int) ($meeting['state_id'] ?? 0);
+    $state_id     = rawurlencode($meeting['state_id'] ?? '');
     $meeting_url  = 'https://civi.me/meetings/' . $state_id;
 
     $subject = "Reminder: {$meeting['council_name']} meets today at {$time_formatted}";

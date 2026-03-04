@@ -11,8 +11,8 @@ if git diff --quiet && git diff --cached --quiet && [ -z "$(git ls-files --other
     exit 0
 fi
 
-# Stage, commit, push
-git add -A
+# Stage tracked files only (never stages untracked files like .env)
+git add -u
 git commit -m "Daily sync: $(date '+%Y-%m-%d')"
 git push origin main
 

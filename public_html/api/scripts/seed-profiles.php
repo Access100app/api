@@ -146,7 +146,7 @@ if (!empty($errors)) {
 if (!empty($results)) {
     $csv_path = __DIR__ . '/profile-review.csv';
     $fp = fopen($csv_path, 'w');
-    fputcsv($fp, ['council_id', 'council_name', 'slug', 'entity_type', 'jurisdiction', 'plain_description', 'decisions_examples', 'why_care']);
+    fputcsv($fp, ['council_id', 'council_name', 'slug', 'entity_type', 'level', 'jurisdiction', 'plain_description', 'decisions_examples', 'why_care']);
 
     foreach ($results as $r) {
         fputcsv($fp, [
@@ -154,6 +154,7 @@ if (!empty($results)) {
             $r['council_name'],
             $r['slug'],
             $r['entity_type'] ?? '',
+            $r['level'] ?? '',
             $r['jurisdiction'] ?? '',
             $r['plain_description'] ?? '',
             $r['decisions_examples'] ?? '',
@@ -187,8 +188,9 @@ Respond in valid JSON with these exact keys:
   "plain_description": "A 2-3 sentence plain-language explanation of what this board/commission does. No jargon. Written for a regular citizen.",
   "decisions_examples": "A paragraph giving 2-3 concrete examples of decisions this board makes that affect everyday people.",
   "why_care": "A paragraph explaining why a regular Hawaii resident should care about this board's work. Make it personal and relatable.",
-  "entity_type": "One of: board, commission, council, committee, authority, department, office",
-  "jurisdiction": "One of: state, honolulu, maui, hawaii, kauai"
+  "entity_type": "One of: board, commission, council, committee, authority, department, office, task_force, neighborhood_board",
+  "jurisdiction": "One of: state, honolulu, maui, hawaii, kauai",
+  "level": "One of: state, county, neighborhood"
 }
 
 Guidelines:
@@ -267,7 +269,7 @@ function parse_response(string $response): array
     }
 
     // Validate entity_type
-    $valid_types = ['board', 'commission', 'council', 'committee', 'authority', 'department', 'office'];
+    $valid_types = ['board', 'commission', 'council', 'committee', 'authority', 'department', 'office', 'task_force', 'neighborhood_board'];
     if (!in_array($parsed['entity_type'] ?? '', $valid_types, true)) {
         $parsed['entity_type'] = 'board';
     }
@@ -276,6 +278,12 @@ function parse_response(string $response): array
     $valid_jurisdictions = ['state', 'honolulu', 'maui', 'hawaii', 'kauai'];
     if (!in_array($parsed['jurisdiction'] ?? '', $valid_jurisdictions, true)) {
         $parsed['jurisdiction'] = 'state';
+    }
+
+    // Validate level
+    $valid_levels = ['state', 'county', 'neighborhood'];
+    if (!in_array($parsed['level'] ?? '', $valid_levels, true)) {
+        $parsed['level'] = 'state';
     }
 
     return $parsed;
@@ -288,13 +296,14 @@ function insert_profile(PDO $pdo, array $profile): void
 {
     $stmt = $pdo->prepare("
         INSERT INTO council_profiles
-            (council_id, slug, plain_description, decisions_examples, why_care, entity_type, jurisdiction, last_updated)
-        VALUES (?, ?, ?, ?, ?, ?, ?, CURDATE())
+            (council_id, slug, plain_description, decisions_examples, why_care, entity_type, level, jurisdiction, last_updated)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURDATE())
         ON DUPLICATE KEY UPDATE
             plain_description = VALUES(plain_description),
             decisions_examples = VALUES(decisions_examples),
             why_care = VALUES(why_care),
             entity_type = VALUES(entity_type),
+            level = VALUES(level),
             jurisdiction = VALUES(jurisdiction),
             last_updated = CURDATE()
     ");
@@ -306,6 +315,7 @@ function insert_profile(PDO $pdo, array $profile): void
         $profile['decisions_examples'] ?? null,
         $profile['why_care'] ?? null,
         $profile['entity_type'] ?? 'board',
+        $profile['level'] ?? 'state',
         $profile['jurisdiction'] ?? 'state',
     ]);
 }

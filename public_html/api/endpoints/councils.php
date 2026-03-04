@@ -64,6 +64,7 @@ function handle_councils_list(array $query): void
     $topic_slug    = isset($query['topic']) ? trim($query['topic']) : null;
     $jurisdiction  = isset($query['jurisdiction']) ? trim($query['jurisdiction']) : null;
     $entity_type   = isset($query['type']) ? trim($query['type']) : null;
+    $level         = isset($query['level']) ? trim($query['level']) : null;
 
     // --- Build query ---
 
@@ -97,7 +98,7 @@ function handle_councils_list(array $query): void
     }
 
     // Filter by entity type — join council_profiles
-    $valid_types = ['board', 'commission', 'council', 'committee', 'authority', 'department', 'office'];
+    $valid_types = ['board', 'commission', 'council', 'committee', 'authority', 'department', 'office', 'task_force', 'neighborhood_board'];
     if (!empty($entity_type) && in_array($entity_type, $valid_types, true)) {
         // Avoid duplicate join if jurisdiction already joined
         if (empty($jurisdiction) || !in_array($jurisdiction, $valid_jurisdictions, true)) {
@@ -107,6 +108,21 @@ function handle_councils_list(array $query): void
             $where_clauses[] = 'cp_j.entity_type = ?';
         }
         $params[] = $entity_type;
+    }
+
+    // Filter by level — join council_profiles
+    $valid_levels = ['state', 'county', 'neighborhood'];
+    if (!empty($level) && in_array($level, $valid_levels, true)) {
+        // Avoid duplicate join if jurisdiction or entity_type already joined
+        if (!empty($jurisdiction) && in_array($jurisdiction, $valid_jurisdictions, true)) {
+            $where_clauses[] = 'cp_j.level = ?';
+        } elseif (!empty($entity_type) && in_array($entity_type, $valid_types, true)) {
+            $where_clauses[] = 'cp_t.level = ?';
+        } else {
+            $joins .= ' JOIN council_profiles cp_l ON c.id = cp_l.council_id';
+            $where_clauses[] = 'cp_l.level = ?';
+        }
+        $params[] = $level;
     }
 
     $where_sql = !empty($where_clauses)

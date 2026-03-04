@@ -245,7 +245,6 @@ function handle_create_subscription(): void
     json_response([
         'user_id'       => $user_id,
         'status'        => 'pending_confirmation',
-        'manage_token'  => $manage_token,
         'councils'      => array_values(array_map('intval', $valid_council_ids)),
         'topics'        => array_values(array_map('intval', $valid_topic_ids)),
         'channels'      => array_values($channels),

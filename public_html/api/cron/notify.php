@@ -59,9 +59,9 @@ try {
                m.location, m.council_id, c.name AS council_name
         FROM meetings m
         JOIN councils c ON m.council_id = c.id
-        WHERE m.updated_at > ?
+        WHERE m.last_updated_at > ?
           AND m.meeting_date >= CURDATE()
-        ORDER BY m.updated_at ASC
+        ORDER BY m.last_updated_at ASC
     ");
     $stmt->execute([$last_run]);
     $changed_meetings = $stmt->fetchAll();

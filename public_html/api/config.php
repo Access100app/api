@@ -23,7 +23,7 @@ if (file_exists($_env_file)) {
         [$_key, $_val] = explode('=', $_line, 2);
         $_key = trim($_key);
         $_val = trim($_val, " \t\n\r\0\x0B\"'");
-        if (!getenv($_key)) {
+        if (getenv($_key) === false) {
             putenv("{$_key}={$_val}");
         }
     }

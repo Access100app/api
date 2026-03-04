@@ -61,6 +61,10 @@ function handle_create_reminder(): void
         json_error(400, 'meeting_state_id is required.');
     }
 
+    if (!preg_match('/^[a-zA-Z0-9_\-\.]{1,100}$/', $meeting_state_id)) {
+        json_error(400, 'Invalid meeting_state_id format.');
+    }
+
     // --- Look up meeting by state_id ---
 
     try {
@@ -177,14 +181,14 @@ function handle_reminder_confirm(array $query): void
 
         if ($reminder['confirmed']) {
             // Already confirmed — redirect gracefully
-            $redirect_url = 'https://civi.me/meetings/' . (int) $reminder['state_id'] . '?reminded=1';
+            $redirect_url = 'https://civi.me/meetings/' . rawurlencode($reminder['state_id']) . '?reminded=1';
             header('Location: ' . $redirect_url, true, 302);
             exit;
         }
 
         // Mark as confirmed and clear the confirm token
         $stmt = $pdo->prepare("
-            UPDATE reminders SET confirmed = TRUE, confirm_token = ''
+            UPDATE reminders SET confirmed = TRUE, confirm_token = NULL
             WHERE id = ?
         ");
         $stmt->execute([$reminder['id']]);
@@ -202,7 +206,7 @@ function handle_reminder_confirm(array $query): void
     send_admin_notification('[civi.me] Reminder confirmed: ' . $reminder['email'], $admin_body);
 
     // Redirect to the meeting page with success flag
-    $redirect_url = 'https://civi.me/meetings/' . (int) $reminder['state_id'] . '?reminded=1';
+    $redirect_url = 'https://civi.me/meetings/' . rawurlencode($reminder['state_id']) . '?reminded=1';
     header('Location: ' . $redirect_url, true, 302);
     exit;
 }

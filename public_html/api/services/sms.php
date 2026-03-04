@@ -58,7 +58,7 @@ function send_meeting_sms(string $phone, array $meeting, string $manage_token): 
         ? date('g:i A', strtotime($meeting['meeting_time']))
         : 'TBD';
 
-    $state_id = (int) ($meeting['state_id'] ?? 0);
+    $state_id = rawurlencode($meeting['state_id'] ?? '');
     $url      = 'https://civi.me/m/' . $state_id;
 
     // SMS must be concise — 160 chars per segment
@@ -115,6 +115,27 @@ function send_digest_sms(string $phone, array $meetings, string $manage_token): 
  */
 function handle_twilio_webhook(): void
 {
+    // Validate Twilio request signature to prevent unauthenticated access.
+    // Without this, anyone could POST to this endpoint and deactivate subscriptions.
+    if (TWILIO_AUTH_TOKEN !== 'CHANGE_ME') {
+        $signature = $_SERVER['HTTP_X_TWILIO_SIGNATURE'] ?? '';
+        $url       = 'https://' . ($_SERVER['HTTP_HOST'] ?? '') . ($_SERVER['REQUEST_URI'] ?? '');
+        $params    = $_POST;
+        ksort($params);
+        $data = $url;
+        foreach ($params as $k => $v) {
+            $data .= $k . $v;
+        }
+        $expected = base64_encode(hash_hmac('sha1', $data, TWILIO_AUTH_TOKEN, true));
+
+        if (!hash_equals($expected, $signature)) {
+            http_response_code(403);
+            header('Content-Type: text/xml; charset=utf-8');
+            echo '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
+            exit;
+        }
+    }
+
     // Twilio sends application/x-www-form-urlencoded
     $from = $_POST['From'] ?? '';
     $body = strtoupper(trim($_POST['Body'] ?? ''));

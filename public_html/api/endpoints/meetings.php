@@ -72,8 +72,25 @@ function handle_meetings_list(array $query): void
         }
     }
 
-    // county is reserved for future use — accepted but ignored
-    // $county = $query['county'] ?? null;
+    // County filter: filter by council_profiles.jurisdiction
+    $county = isset($query['county']) ? trim($query['county']) : null;
+    $valid_counties = ['state', 'honolulu', 'maui', 'hawaii', 'kauai'];
+    if ($county !== null && !in_array($county, $valid_counties, true)) {
+        $county = null;
+    }
+
+    // Source filter: comma-separated source keys (e.g., ?source=ehawaii,nco)
+    $source_keys = [];
+    if (!empty($query['source'])) {
+        $valid_sources = ['ehawaii', 'nco', 'honolulu_boards', 'maui_legistar'];
+        $raw_sources = explode(',', substr(trim($query['source']), 0, 200));
+        foreach ($raw_sources as $sk) {
+            $sk = trim($sk);
+            if (in_array($sk, $valid_sources, true)) {
+                $source_keys[] = $sk;
+            }
+        }
+    }
 
     $limit  = isset($query['limit'])  ? min((int) $query['limit'],  200) : 50;
     $limit  = max($limit, 1);
@@ -102,12 +119,25 @@ function handle_meetings_list(array $query): void
         $params[]        = $council_id;
     }
 
+    if ($county !== null) {
+        $where_clauses[] = 'm.council_id IN (SELECT cp.council_id FROM council_profiles cp WHERE cp.jurisdiction = ?)';
+        $params[]        = $county;
+    }
+
     if (!empty($keyword)) {
         $where_clauses[] = '(m.title LIKE ? OR m.description LIKE ? OR c.name LIKE ?)';
         $search_term     = '%' . $keyword . '%';
         $params[]        = $search_term;
         $params[]        = $search_term;
         $params[]        = $search_term;
+    }
+
+    if (!empty($source_keys)) {
+        $source_placeholders = implode(',', array_fill(0, count($source_keys), '?'));
+        $where_clauses[] = "m.source IN ({$source_placeholders})";
+        foreach ($source_keys as $sk) {
+            $params[] = $sk;
+        }
     }
 
     // Topic filter: include meetings from councils mapped to these topics
@@ -168,6 +198,7 @@ function handle_meetings_list(array $query): void
             m.location,
             m.status,
             m.detail_url,
+            m.source,
             c.id   AS council_id,
             c.name AS council_name,
             p.name AS parent_council_name
@@ -235,6 +266,7 @@ function handle_meeting_detail(string $state_id): void
                 m.description,
                 m.full_agenda_text,
                 m.summary_text,
+                m.source,
                 c.id   AS council_id,
                 c.name AS council_name,
                 p.name AS parent_council_name
@@ -335,6 +367,7 @@ function handle_meeting_detail(string $state_id): void
         'status'       => $meeting['status'],
         'description'  => strip_tags($description_text ?? ''),
         'summary_text' => $meeting['summary_text'],
+        'source'       => $meeting['source'] ?? null,
         'council'      => [
             'id'          => (int) $meeting['council_id'],
             'name'        => $meeting['council_name'],
@@ -529,6 +562,7 @@ function shape_meeting_list_row(array $row): array
         'location'     => strip_tags($row['location'] ?? ''),
         'status'       => $row['status'],
         'detail_url'   => $row['detail_url'],
+        'source'       => $row['source'] ?? null,
         'council'      => [
             'id'          => (int) $row['council_id'],
             'name'        => $row['council_name'],

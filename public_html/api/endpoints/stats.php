@@ -67,6 +67,19 @@ try {
         $stats['active_subscribers'] = 0;
     }
 
+    // Pending reminders (confirmed, not yet sent, for upcoming meetings)
+    try {
+        $stmt = $pdo->query(
+            "SELECT COUNT(*) as total FROM reminders r
+             JOIN meetings m ON r.meeting_id = m.id
+             WHERE r.confirmed = 1 AND r.sent = 0 AND m.meeting_date >= CURDATE()"
+        );
+        $row = $stmt->fetch();
+        $stats['pending_reminders'] = (int) $row['total'];
+    } catch (PDOException $e) {
+        $stats['pending_reminders'] = 0;
+    }
+
     // Total notifications sent (all time)
     try {
         $stmt = $pdo->query(
@@ -77,6 +90,24 @@ try {
     } catch (PDOException $e) {
         $stats['total_notifications_sent'] = 0;
     }
+
+    // Meetings by source (upcoming + total for each scraper source)
+    $stmt = $pdo->query("
+        SELECT source,
+               COUNT(*) AS total,
+               SUM(CASE WHEN meeting_date >= CURDATE() THEN 1 ELSE 0 END) AS upcoming
+        FROM meetings
+        WHERE source IS NOT NULL
+        GROUP BY source
+    ");
+    $by_source = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $by_source[$row['source']] = [
+            'total'    => (int) $row['total'],
+            'upcoming' => (int) $row['upcoming'],
+        ];
+    }
+    $stats['meetings_by_source'] = $by_source;
 
     // Date range coverage
     $stmt = $pdo->query(

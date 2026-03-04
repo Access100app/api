@@ -17,6 +17,7 @@
  */
 
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../services/summarizer.php';
 
 // ─── CLI Arguments ──────────────────────────────────────────────────
 $dry_run    = in_array('--dry-run', $argv ?? [], true);
@@ -40,6 +41,7 @@ $stats = [
     'meetings_new'     => 0,
     'meetings_updated' => 0,
     'attachments_new'  => 0,
+    'summarized'       => 0,
 ];
 
 echo date('[Y-m-d H:i:s]') . " Scraper starting" . ($dry_run ? ' (DRY RUN)' : '') . "...\n";
@@ -82,6 +84,7 @@ try {
                 $stats['meetings_new']     += $result['new'];
                 $stats['meetings_updated'] += $result['updated'];
                 $stats['attachments_new']  += $result['attachments'];
+                $stats['summarized']       += $result['summarized'];
             }
         } catch (Exception $e) {
             $stats['councils_polled']++;
@@ -114,6 +117,7 @@ echo "  Meetings found:  {$stats['meetings_found']}\n";
 echo "  Meetings new:    {$stats['meetings_new']}\n";
 echo "  Meetings updated:{$stats['meetings_updated']}\n";
 echo "  Attachments new: {$stats['attachments_new']}\n";
+echo "  Summarized:     {$stats['summarized']}\n";
 echo date('[Y-m-d H:i:s]') . " Done in {$elapsed}s.\n";
 
 
@@ -128,7 +132,7 @@ echo date('[Y-m-d H:i:s]') . " Done in {$elapsed}s.\n";
  */
 function poll_council(PDO $pdo, array $council, bool $dry_run): array|false
 {
-    $result = ['found' => 0, 'new' => 0, 'updated' => 0, 'attachments' => 0];
+    $result = ['found' => 0, 'new' => 0, 'updated' => 0, 'attachments' => 0, 'summarized' => 0];
 
     // Fetch RSS feed — encode spaces in URLs (common in eHawaii URLs)
     $rss_url = str_replace(' ', '%20', $council['rss_url']);
@@ -190,6 +194,13 @@ function poll_council(PDO $pdo, array $council, bool $dry_run): array|false
                 if ($meeting_id && !empty($parsed['detail_url'])) {
                     $att_count = scrape_attachments($pdo, $meeting_id, $parsed['detail_url']);
                     $result['attachments'] += $att_count;
+                }
+                // Generate AI summary immediately
+                if ($meeting_id) {
+                    $summary = summarize_meeting($meeting_id);
+                    if ($summary) {
+                        $result['summarized']++;
+                    }
                 }
             }
             $result['new']++;

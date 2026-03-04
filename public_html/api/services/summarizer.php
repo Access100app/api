@@ -27,20 +27,21 @@ define('CLAUDE_MAX_TOKENS', 1024);
 /**
  * Generate and store an AI summary for a meeting.
  *
- * Looks up the meeting by internal ID, extracts agenda text (from
- * full_agenda_text or description), sends to Claude, and stores
- * the result in meetings.summary_text.
+ * Looks up the meeting by internal ID, combines description text
+ * with agenda PDF attachment (when available), sends to Claude,
+ * and stores the result in meetings.summary_text.
  *
- * @param int $meeting_id Internal meeting ID (not state_id)
+ * @param int  $meeting_id Internal meeting ID (not state_id)
+ * @param bool $force      Re-generate even if a summary already exists
  * @return string|null The generated summary, or null on failure
  */
-function summarize_meeting(int $meeting_id): ?string
+function summarize_meeting(int $meeting_id, bool $force = false): ?string
 {
     try {
         $pdo = get_db();
 
         $stmt = $pdo->prepare("
-            SELECT m.id, m.title, m.description, m.full_agenda_text, m.summary_text,
+            SELECT m.id, m.title, m.description, m.summary_text,
                    c.name AS council_name
             FROM meetings m
             JOIN councils c ON m.council_id = c.id
@@ -55,25 +56,39 @@ function summarize_meeting(int $meeting_id): ?string
             return null;
         }
 
-        // Skip if already summarized
-        if (!empty($meeting['summary_text'])) {
+        // Skip if already summarized (unless forced)
+        if (!$force && !empty($meeting['summary_text'])) {
             return $meeting['summary_text'];
         }
 
-        // Get agenda text — prefer full_agenda_text, fall back to description
-        $agenda_text = !empty($meeting['full_agenda_text'])
-            ? $meeting['full_agenda_text']
-            : $meeting['description'];
+        // Get description text — this is the authoritative source
+        $desc_text  = trim(strip_tags(html_entity_decode($meeting['description'] ?? '')));
+        $clean_text = $desc_text;
 
-        // Strip HTML and decode entities
-        $clean_text = trim(strip_tags(html_entity_decode($agenda_text ?? '')));
-
-        // If calendar text is thin, try to extract from an agenda PDF attachment
-        if (strlen($clean_text) < 300) {
-            $pdf_text = extract_agenda_attachment($pdo, $meeting_id);
-            if ($pdf_text) {
+        // Always try to extract agenda PDF for additional detail
+        $pdf_text = extract_agenda_attachment($pdo, $meeting_id);
+        if ($pdf_text) {
+            // Verify the PDF content is relevant to this meeting by checking
+            // for shared keywords (title words appearing in the PDF text)
+            $title_words = array_filter(
+                explode(' ', strtolower($meeting['title'])),
+                fn($w) => strlen($w) > 3
+            );
+            $pdf_lower   = strtolower($pdf_text);
+            $matches     = 0;
+            foreach ($title_words as $word) {
+                if (str_contains($pdf_lower, $word)) {
+                    $matches++;
+                }
+            }
+            // If at least half of the significant title words appear in the PDF, it's relevant
+            if (count($title_words) === 0 || $matches >= max(1, count($title_words) / 2)) {
                 error_log("Summarizer: enriched meeting ID {$meeting_id} with agenda PDF (" . strlen($pdf_text) . " chars).");
-                $clean_text = $pdf_text . "\n\n--- Calendar listing ---\n" . $clean_text;
+                // Description is primary; PDF provides supplementary detail
+                $clean_text = "--- Official notice (primary source) ---\n" . $desc_text
+                            . "\n\n--- Agenda attachment (supplementary detail) ---\n" . $pdf_text;
+            } else {
+                error_log("Summarizer: PDF for meeting ID {$meeting_id} does not appear related — using description only.");
             }
         }
 
@@ -129,8 +144,7 @@ function summarize_pending_meetings(int $limit = 10): array
             SELECT id
             FROM meetings
             WHERE summary_text IS NULL
-              AND (full_agenda_text IS NOT NULL AND full_agenda_text != ''
-                   OR description IS NOT NULL AND description != '')
+              AND description IS NOT NULL AND description != ''
             ORDER BY
                 CASE WHEN meeting_date >= CURDATE() THEN 0 ELSE 1 END,
                 meeting_date ASC
