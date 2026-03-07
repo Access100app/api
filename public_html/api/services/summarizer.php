@@ -19,6 +19,25 @@ define('CLAUDE_API_URL', 'https://api.anthropic.com/v1/messages');
 define('CLAUDE_MODEL', 'claude-sonnet-4-6');
 define('CLAUDE_MAX_TOKENS', 1024);
 
+// OLA languages for meeting summary translations
+define('TRANSLATION_LOCALES', [
+    'haw'     => 'Hawaiian',
+    'tl'      => 'Tagalog',
+    'ja'      => 'Japanese',
+    'ilo'     => 'Ilocano',
+    'zh-hans' => 'Simplified Chinese',
+    'zh-hant' => 'Traditional Chinese',
+    'ko'      => 'Korean',
+    'es'      => 'Spanish',
+    'vi'      => 'Vietnamese',
+    'sm'      => 'Samoan',
+    'to'      => 'Tongan',
+    'mah'     => 'Marshallese',
+    'chk'     => 'Chuukese',
+    'th'      => 'Thai',
+    'ceb'     => 'Cebuano',
+]);
+
 
 // =====================================================================
 // Summarize a single meeting
@@ -109,6 +128,17 @@ function summarize_meeting(int $meeting_id, bool $force = false): ?string
         $stmt->execute([$summary, $meeting_id]);
 
         error_log("Summarizer: generated summary for meeting ID {$meeting_id} (" . strlen($summary) . " chars).");
+
+        // Translate into OLA languages
+        $translations = translate_summary($summary, $meeting['council_name'], $meeting['title']);
+        if ($translations !== null) {
+            $stmt = $pdo->prepare("UPDATE meetings SET summary_translations = ? WHERE id = ?");
+            $stmt->execute([json_encode($translations, JSON_UNESCAPED_UNICODE), $meeting_id]);
+            error_log("Summarizer: translated summary for meeting ID {$meeting_id} into " . count($translations) . " languages.");
+        } else {
+            error_log("Summarizer: translation failed for meeting ID {$meeting_id} — English summary saved.");
+        }
+
         return $summary;
 
     } catch (PDOException $e) {
@@ -268,6 +298,122 @@ function generate_summary(string $agenda_text, string $council_name, string $tit
     }
 
     return trim($data['content'][0]['text']);
+}
+
+
+// =====================================================================
+// Translate summary into OLA languages
+// =====================================================================
+
+/**
+ * Translate an English meeting summary into all 15 OLA languages
+ * using a single Claude API call with structured output.
+ *
+ * @param string $english_summary The English HTML summary
+ * @param string $council_name    Name of the council (for context)
+ * @param string $title           Meeting title (for context)
+ * @return array|null Associative array keyed by locale slug, or null on failure
+ */
+function translate_summary(string $english_summary, string $council_name, string $title): ?array
+{
+    if (CLAUDE_API_KEY === 'CHANGE_ME') {
+        error_log('Summarizer: Claude API key not configured — skipping translation.');
+        return null;
+    }
+
+    $locale_list = [];
+    foreach (TRANSLATION_LOCALES as $slug => $name) {
+        $locale_list[] = "  \"{$slug}\": \"{$name}\"";
+    }
+    $locale_json = "{\n" . implode(",\n", $locale_list) . "\n}";
+
+    $system_prompt = "You are a professional translator for a civic engagement platform in Hawaii. "
+        . "Translate the provided English HTML meeting summary into all requested languages. "
+        . "Preserve ALL HTML tags exactly as they are — translate only the text content between tags. "
+        . "Do not add, remove, or modify any HTML tags. "
+        . "Use natural, accessible language appropriate for each target language. "
+        . "Government terminology should use standard official translations where they exist.";
+
+    $user_prompt = "Translate this English meeting summary into all 15 languages listed below.\n\n"
+        . "Council: {$council_name}\n"
+        . "Meeting: {$title}\n\n"
+        . "English summary:\n{$english_summary}\n\n"
+        . "Target languages (locale slug => language name):\n{$locale_json}\n\n"
+        . "Return a JSON object with each locale slug as the key and the translated HTML as the value. "
+        . "Output ONLY the JSON object, no other text.";
+
+    $payload = [
+        'model'      => CLAUDE_MODEL,
+        'max_tokens' => 8192,
+        'system'     => $system_prompt,
+        'messages'   => [
+            ['role' => 'user', 'content' => $user_prompt],
+        ],
+    ];
+
+    $ch = curl_init(CLAUDE_API_URL);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER     => [
+            'x-api-key: ' . CLAUDE_API_KEY,
+            'anthropic-version: 2023-06-01',
+            'Content-Type: application/json',
+        ],
+        CURLOPT_POSTFIELDS     => json_encode($payload),
+        CURLOPT_TIMEOUT        => 120,
+        CURLOPT_CONNECTTIMEOUT => 10,
+    ]);
+
+    $response   = curl_exec($ch);
+    $http_code  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curl_error = curl_error($ch);
+    curl_close($ch);
+
+    if ($curl_error) {
+        error_log('Summarizer translation cURL error: ' . $curl_error);
+        return null;
+    }
+
+    if ($http_code !== 200) {
+        error_log('Summarizer translation Claude API error (HTTP ' . $http_code . '): ' . $response);
+        return null;
+    }
+
+    $data = json_decode($response, true);
+    if (!$data || !isset($data['content'][0]['text'])) {
+        error_log('Summarizer translation: unexpected Claude API response format.');
+        return null;
+    }
+
+    $text = trim($data['content'][0]['text']);
+
+    // Strip markdown code fences if Claude wrapped the JSON
+    if (str_starts_with($text, '```')) {
+        $text = preg_replace('/^```(?:json)?\s*/i', '', $text);
+        $text = preg_replace('/\s*```\s*$/', '', $text);
+    }
+
+    $translations = json_decode($text, true);
+    if (!is_array($translations)) {
+        error_log('Summarizer translation: failed to parse JSON from Claude response.');
+        return null;
+    }
+
+    // Keep only valid locale keys
+    $valid = [];
+    foreach (TRANSLATION_LOCALES as $slug => $name) {
+        if (!empty($translations[$slug])) {
+            $valid[$slug] = $translations[$slug];
+        }
+    }
+
+    if (empty($valid)) {
+        error_log('Summarizer translation: no valid translations found in response.');
+        return null;
+    }
+
+    return $valid;
 }
 
 
