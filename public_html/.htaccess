@@ -4,6 +4,13 @@ RewriteEngine On
 # Route all /api/v1/* requests to the API router
 RewriteRule ^api/v1(/.*)?$ api/index.php [QSA,L]
 
+# ─── Redirect non-API traffic to access100.org ───────────────────
+# Skip API paths, checker, and hjco
+RewriteCond %{REQUEST_URI} !^/api/ [NC]
+RewriteCond %{REQUEST_URI} !^/checker/ [NC]
+RewriteCond %{REQUEST_URI} !^/hjco/ [NC]
+RewriteRule ^(.*)$ https://access100.org [R=301,L]
+
 # ─── Existing: Extensionless PHP URLs ────────────────────────────
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_FILENAME}\.php -f
