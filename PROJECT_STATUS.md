@@ -1,10 +1,10 @@
-# Access100 API — Project Status
+# Civi.Me API — Project Status
 
-Last updated: 2026-02-28
+Last updated: 2026-03-10
 
 ## What Is This?
 
-Access100 is a REST API that aggregates Hawaii government meeting data from the state's public calendar (calendar.ehawaii.gov) and makes it accessible through a clean JSON API. It powers [civi.me](https://civi.me), a WordPress frontend that helps Hawaii residents stay informed about government meetings, subscribe to notifications, and read AI-generated plain-language summaries of meeting agendas.
+The Civi.Me API (hosted at access100.app) aggregates Hawaii government meeting data from the state's public calendar (calendar.ehawaii.gov) and makes it accessible through a clean JSON API. It powers [Civi.Me](https://civi.me), a WordPress frontend that helps Hawaii residents stay informed about government meetings, subscribe to notifications, and read AI-generated plain-language summaries of meeting agendas. Civi.Me is one of Access100's three service lines — a free, open-source, multilingual civic engagement platform.
 
 **GitHub:** https://github.com/Access100app/api
 
@@ -137,9 +137,9 @@ All cron scripts support `--dry-run` for safe testing.
 - Three sections: "What's Being Discussed", "Decisions Expected", "Who Should Pay Attention"
 - PDF enrichment: when calendar text is < 300 chars, downloads agenda PDF attachments and extracts text via `pdftotext`
 
-### WordPress Frontend (civi.me) — Separate Repo
+### WordPress Frontend (Civi.Me) — Separate Repo
 
-The WordPress frontend at civi.me is complete with:
+The Civi.Me WordPress frontend at civi.me is complete with:
 - Custom theme with design tokens, dark mode, WCAG 2.1 AA compliance
 - `civime-core` plugin: API client with transient caching
 - `civime-meetings` plugin: meeting list, detail, and councils views with filters
@@ -187,7 +187,7 @@ The WordPress frontend at civi.me is complete with:
 | 11 | **WCAG audit** | Accessibility compliance across all pages |
 | 12 | **Deploy to Hostinger production** | Blocked by #1, #2, #3, #5 |
 | 13 | **Configure production cron jobs** | Hostinger cPanel cron setup |
-| 14 | **DNS: point civi.me to home server** | Frontend goes live |
+| 14 | **DNS: point civi.me to home server** | Civi.Me frontend goes live |
 
 ### Recommended Order
 
