@@ -16,6 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 2: Parser Fixes and Tests** - Fix date parsing in all four scrapers and cover each parser with fixture-based unit tests
 - [ ] **Phase 3: Date Backfill** - Re-fetch and correct recent/future meeting dates using the fixed parsers, with dry-run and full audit log
 - [x] **Phase 4: Link Checker** - Validate all stored URLs and produce a broken-link report classifying permanent vs transient failures (completed 2026-03-17)
+- [ ] **Phase 5: Time Backfill** - Re-parse stored raw_rss_data to extract and populate missing meeting_time values for NCO, Honolulu Boards, and eHawaii
 
 ## Phase Details
 
@@ -78,10 +79,24 @@ Plans:
 Plans:
 - [ ] 04-01-PLAN.md — Write check-links.php (curl_multi GET, both tables) + operator review of broken-link report
 
+### Phase 5: Time Backfill
+**Goal**: All rows in the meetings table for NCO, Honolulu Boards, and eHawaii have meeting_time (and meeting_time_end where available) populated from the times already embedded in their stored raw_rss_data
+**Depends on:** Phase 4
+**Requirements**: TIME-01
+**Success Criteria** (what must be TRUE):
+  1. Running `scripts/backfill-times.php --dry-run` prints a per-source report of meetings that would gain a meeting_time value, without modifying the database
+  2. Running without `--dry-run` fills meeting_time (and meeting_time_end for NCO/HNL Boards) for every row where those fields are currently NULL or empty and raw_rss_data contains a parseable time
+  3. A second dry-run after the live run reports 0 WOULD FILL rows (idempotency confirmed)
+  4. No row that had a non-null meeting_time before the run has a different value after
+**Plans**: 2 plans
+Plans:
+- [ ] 05-01-PLAN.md — Write backfill-times.php (--dry-run, per-row logging, extract functions, summary)
+- [ ] 05-02-PLAN.md — Dry-run review checkpoint + live execution + idempotency check
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -89,3 +104,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | 2. Parser Fixes and Tests | 1/5 | In Progress|  |
 | 3. Date Backfill | 1/2 | In Progress|  |
 | 4. Link Checker | 1/1 | Complete   | 2026-03-17 |
+| 5. Time Backfill | 0/2 | Planned    |  |
