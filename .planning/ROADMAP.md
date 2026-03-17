@@ -12,7 +12,7 @@ Four production scrapers are storing meeting dates without verifying accuracy. T
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Fallback Audit** - Add eHawaii pubDate fallback logging and audit NCO/Honolulu Boards feeds to establish scope before fixing
+- [x] **Phase 1: Fallback Audit** - Add eHawaii pubDate fallback logging and audit NCO/Honolulu Boards feeds to establish scope before fixing (completed 2026-03-17)
 - [ ] **Phase 2: Parser Fixes and Tests** - Fix date parsing in all four scrapers and cover each parser with fixture-based unit tests
 - [ ] **Phase 3: Date Backfill** - Re-fetch and correct recent/future meeting dates using the fixed parsers, with dry-run and full audit log
 - [ ] **Phase 4: Link Checker** - Validate all stored URLs and produce a broken-link report classifying permanent vs transient failures
@@ -74,7 +74,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Fallback Audit | 1/2 | In Progress|  |
+| 1. Fallback Audit | 2/2 | Complete   | 2026-03-17 |
 | 2. Parser Fixes and Tests | 0/? | Not started | - |
 | 3. Date Backfill | 0/? | Not started | - |
 | 4. Link Checker | 0/? | Not started | - |
