@@ -19,6 +19,7 @@
 
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../services/summarizer.php';
+require_once __DIR__ . '/parse_helpers_maui.php';
 
 // ─── Constants ──────────────────────────────────────────────────
 define('MAUI_LEGISTAR_BASE', 'https://webapi.legistar.com/v1/mauicounty');
@@ -326,9 +327,12 @@ function map_legistar_event(array $event, array $body_map): ?array
         return null;
     }
 
-    // Parse date (format: "2026-03-04T00:00:00")
-    $dt = new DateTime($event_date);
-    $meeting_date = $dt->format('Y-m-d');
+    // Parse date (format: "2026-03-04T00:00:00") using explicit Pacific/Honolulu timezone
+    $meeting_date = parse_maui_date($event_date);
+    if ($meeting_date === null) {
+        error_log("Maui Legistar: skipping event with unparseable date: {$event_date}");
+        return null;
+    }
 
     // Parse time (format: "10:00 AM" or empty)
     $meeting_time = null;
