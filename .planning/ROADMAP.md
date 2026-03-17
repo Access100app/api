@@ -74,7 +74,9 @@ Plans:
   2. The script uses batched GET requests (not HEAD) so government document servers that reject HEAD do not produce false positives
   3. The output report lists every broken URL with: meeting ID, URL, HTTP status code, and URL type (detail_url vs attachment)
   4. Broken URLs are classified as permanent failures (404, 410) or transient failures (5xx, timeout) in the report
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 04-01-PLAN.md — Write check-links.php (curl_multi GET, both tables) + operator review of broken-link report
 
 ## Progress
 
