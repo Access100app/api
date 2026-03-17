@@ -303,6 +303,13 @@ function parse_rss_item(SimpleXMLElement $item, int $council_id): ?array
         $pub = (string) $item->pubDate;
         if (!empty($pub)) {
             $date_str = date('Y-m-d', strtotime($pub));
+            error_log(sprintf(
+                'eHawaii scraper: pubDate fallback used — council_id=%d, title=%s, pubDate=%s, desc_snippet=%s',
+                $council_id,
+                (string) $item->title,
+                $pub,
+                substr(strip_tags($desc_html ?? ''), 0, 120)
+            ));
         }
     }
 
