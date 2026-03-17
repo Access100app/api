@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-03-PLAN.md
-last_updated: "2026-03-17T07:06:35.106Z"
+stopped_at: Completed 02-02-PLAN.md
+last_updated: "2026-03-17T07:07:08.775Z"
 last_activity: 2026-03-17 — Plan 01-01 complete
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 7
-  completed_plans: 3
+  completed_plans: 5
   percent: 10
 ---
 
@@ -52,6 +52,8 @@ Progress: [█░░░░░░░░░] 10%
 *Updated after each plan completion*
 | Phase 01-fallback-audit P02 | 15 | 3 tasks | 2 files |
 | Phase 02-parser-fixes-and-tests P03 | 3 | 1 tasks | 2 files |
+| Phase 02-parser-fixes-and-tests P01 | 2 | 2 tasks | 4 files |
+| Phase 02-parser-fixes-and-tests P02 | 2min | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -72,6 +74,10 @@ Recent decisions affecting current work:
 - [Phase 01-02]: Maui raw_rss_data confirmed NULL for all rows — timezone audit used weekend-date heuristic, no shift evidence found
 - [Phase 02-03]: parse_maui_date() returns null (not false) on failure — consistent with PHP 8 nullable return typing; caller uses strict null check to skip unparseable events
 - [Phase 02-03]: parse_helpers_maui.php extraction pattern established: standalone include, no DB/curl/exit, safe for PHPUnit require_once
+- [Phase 02-parser-fixes-and-tests]: Track composer.json and composer.lock in git; gitignore vendor/ (standard PHP practice)
+- [Phase 02-parser-fixes-and-tests]: Tests run exclusively via docker exec (host PHP 8.1 incompatible with PHPUnit 11 which requires 8.2)
+- [Phase 02-02]: Helper file returns identical array shape to original inline function — callers (poll_council) unchanged
+- [Phase 02-02]: Audit block in scrape.php --audit mode left with its own inline regex (diagnostic tool, not production path)
 
 ### Pending Todos
 
@@ -84,6 +90,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T07:06:35.104Z
-Stopped at: Completed 02-03-PLAN.md
+Last session: 2026-03-17T07:07:08.773Z
+Stopped at: Completed 02-02-PLAN.md
 Resume file: None
