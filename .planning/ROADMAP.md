@@ -60,7 +60,10 @@ Plans:
   3. A summary report after execution states: total meetings checked, total corrected, total unchanged
   4. The script identifies and logs which stored dates originated from pubDate fallback vs parsed description (provenance tracking)
   5. No meeting date older than approximately one week is modified by the backfill
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 03-01-PLAN.md — Write validate-dates.php backfill script (all 4 sources, --dry-run, provenance, summary)
+- [ ] 03-02-PLAN.md — Dry-run review checkpoint + live execution + DB verification
 
 ### Phase 4: Link Checker
 **Goal**: Operators have a complete report of broken URLs across all stored meetings, classified by failure type, so they can decide what to act on
@@ -82,5 +85,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Fallback Audit | 2/2 | Complete   | 2026-03-17 |
 | 2. Parser Fixes and Tests | 1/5 | In Progress|  |
-| 3. Date Backfill | 0/? | Not started | - |
+| 3. Date Backfill | 0/2 | Not started | - |
 | 4. Link Checker | 0/? | Not started | - |

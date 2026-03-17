@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-01-PLAN.md
-last_updated: "2026-03-17T07:08:31.478Z"
+stopped_at: Completed 02-05-PLAN.md
+last_updated: "2026-03-17T07:14:42.429Z"
 last_activity: 2026-03-17 — Plan 01-01 complete
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 7
-  completed_plans: 5
+  completed_plans: 7
   percent: 10
 ---
 
@@ -54,6 +54,7 @@ Progress: [█░░░░░░░░░] 10%
 | Phase 02-parser-fixes-and-tests P03 | 3 | 1 tasks | 2 files |
 | Phase 02-parser-fixes-and-tests P01 | 2 | 2 tasks | 4 files |
 | Phase 02-parser-fixes-and-tests P02 | 2min | 1 tasks | 2 files |
+| Phase 02-parser-fixes-and-tests P05 | 3 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -78,6 +79,8 @@ Recent decisions affecting current work:
 - [Phase 02-parser-fixes-and-tests]: Tests run exclusively via docker exec (host PHP 8.1 incompatible with PHPUnit 11 which requires 8.2)
 - [Phase 02-02]: Helper file returns identical array shape to original inline function — callers (poll_council) unchanged
 - [Phase 02-02]: Audit block in scrape.php --audit mode left with its own inline regex (diagnostic tool, not production path)
+- [Phase 02-parser-fixes-and-tests]: pubDate fixture must use correct day-of-week — strtotime resolves weekday+date mismatches by advancing to next matching weekday
+- [Phase 02-parser-fixes-and-tests]: EHawaiiParserTest and MauiParserTest use require_once of helper files — testing production code directly, not inline copies
 
 ### Pending Todos
 
@@ -90,6 +93,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T07:08:31.476Z
-Stopped at: Completed 02-01-PLAN.md
+Last session: 2026-03-17T07:14:42.427Z
+Stopped at: Completed 02-05-PLAN.md
 Resume file: None
