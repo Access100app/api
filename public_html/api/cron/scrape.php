@@ -18,6 +18,7 @@
 
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../services/summarizer.php';
+require_once __DIR__ . '/parse_helpers_ehawaii.php';
 
 // ─── CLI Arguments ──────────────────────────────────────────────────
 $dry_run    = in_array('--dry-run', $argv ?? [], true);
@@ -329,100 +330,7 @@ function fetch_rss(string $url): ?SimpleXMLElement
 }
 
 
-/**
- * Parse an RSS <item> into a normalized meeting array.
- */
-function parse_rss_item(SimpleXMLElement $item, int $council_id): ?array
-{
-    $link = trim((string) $item->link);
-    $guid = trim((string) $item->guid);
-
-    if (empty($link)) {
-        return null;
-    }
-
-    // Extract state meeting ID from URL: /calendar/meeting/76720/details.html
-    $state_id = null;
-    if (preg_match('#/meeting/(\d+)/#', $link, $m)) {
-        $state_id = (int) $m[1];
-    }
-
-    // Parse the description for structured fields
-    $desc_html = html_entity_decode((string) $item->description, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-
-    // Extract Location, Date, Time from the standard header lines
-    $location = '';
-    $date_str = '';
-    $time_str = '';
-
-    if (preg_match('/^Location:\s*(.+?)(?:<br|$)/mi', $desc_html, $m)) {
-        $location = trim(strip_tags($m[1]));
-    }
-    if (preg_match('/Date:\s*(\d{4}\/\d{2}\/\d{2})/i', $desc_html, $m)) {
-        $date_str = str_replace('/', '-', $m[1]);
-    }
-    if (preg_match('/Time:\s*(\d{1,2}:\d{2}\s*[AP]M)/i', $desc_html, $m)) {
-        $time_str = date('H:i:s', strtotime($m[1]));
-    }
-
-    if (empty($date_str)) {
-        // Try pubDate as fallback
-        $pub = (string) $item->pubDate;
-        if (!empty($pub)) {
-            $date_str = date('Y-m-d', strtotime($pub));
-            error_log(sprintf(
-                'eHawaii scraper: pubDate fallback used — council_id=%d, title=%s, pubDate=%s, desc_snippet=%s',
-                $council_id,
-                (string) $item->title,
-                $pub,
-                substr(strip_tags($desc_html ?? ''), 0, 120)
-            ));
-        }
-    }
-
-    if (empty($date_str)) {
-        return null; // Can't store a meeting without a date
-    }
-
-    // Clean title — remove " - Updated on MM/DD/YYYY HH:MM AM" suffix
-    $title = trim((string) $item->title);
-    $title = preg_replace('/\s*-\s*Updated on \d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}\s*[AP]M$/i', '', $title);
-
-    // Extract zoom link from description
-    $zoom_link = null;
-    if (preg_match('#(https?://[^\s"<]*zoom\.us/[^\s"<]+)#i', $desc_html, $m)) {
-        $zoom_link = $m[1];
-    }
-
-    // The full description text (strip HTML for storage)
-    $description = trim(strip_tags(html_entity_decode($desc_html)));
-
-    // Raw RSS data as JSON (matches existing DB constraint: json_valid)
-    $raw_rss = json_encode([
-        'title'       => (string) $item->title,
-        'link'        => $link,
-        'description' => (string) $item->description,
-        'guid'        => $guid,
-        'pubDate'     => (string) $item->pubDate,
-    ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-
-    return [
-        'state_id'    => $state_id,
-        'external_id' => $link,
-        'council_id'  => $council_id,
-        'title'       => $title,
-        'description' => $description,
-        'location'    => $location,
-        'meeting_date' => $date_str,
-        'meeting_time' => $time_str ?: null,
-        'detail_url'  => $link,
-        'zoom_link'   => $zoom_link,
-        'status'      => 'active',
-        'guid'        => $guid ?: $link,
-        'pub_date'    => (string) $item->pubDate,
-        'raw_rss'     => $raw_rss,
-    ];
-}
+// parse_rss_item() is defined in parse_helpers_ehawaii.php
 
 
 /**
