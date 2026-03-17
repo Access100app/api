@@ -33,3 +33,7 @@ public_html/index.html
 
 # Legacy meetings frontend (has hardcoded Hostinger credentials)
 public_html/meetings/
+.planning/
+
+# Composer vendor directory — installed in container, not committed
+/vendor/
