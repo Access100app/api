@@ -40,7 +40,7 @@ $stats = [
 // =====================================================================
 
 $stmt = $pdo->prepare(
-    "SELECT id, meeting_time, meeting_time_end, raw_rss_data, source
+    "SELECT id, meeting_time, raw_rss_data, source
        FROM meetings
       WHERE source = ?
         AND raw_rss_data IS NOT NULL
@@ -131,8 +131,8 @@ foreach ($rows as $row) {
     if ($dry_run) {
         echo "  WOULD FILL: nco | meeting_id={$row['id']} | time_start={$time_start} | time_end={$time_end_label}\n";
     } else {
-        $upd = $pdo->prepare("UPDATE meetings SET meeting_time = ?, meeting_time_end = ? WHERE id = ?");
-        $upd->execute([$time_start, $time_end, $row['id']]);
+        $upd = $pdo->prepare("UPDATE meetings SET meeting_time = ? WHERE id = ?");
+        $upd->execute([$time_start, $row['id']]);
         echo "  FILLED: nco | meeting_id={$row['id']} | time_start={$time_start} | time_end={$time_end_label}\n";
     }
 }
@@ -181,8 +181,8 @@ foreach ($rows as $row) {
     if ($dry_run) {
         echo "  WOULD FILL: honolulu_boards | meeting_id={$row['id']} | time_start={$time_start} | time_end={$time_end_label}\n";
     } else {
-        $upd = $pdo->prepare("UPDATE meetings SET meeting_time = ?, meeting_time_end = ? WHERE id = ?");
-        $upd->execute([$time_start, $time_end, $row['id']]);
+        $upd = $pdo->prepare("UPDATE meetings SET meeting_time = ? WHERE id = ?");
+        $upd->execute([$time_start, $row['id']]);
         echo "  FILLED: honolulu_boards | meeting_id={$row['id']} | time_start={$time_start} | time_end={$time_end_label}\n";
     }
 }
