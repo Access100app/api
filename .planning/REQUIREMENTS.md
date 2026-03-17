@@ -24,11 +24,11 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Backfill
 
-- [ ] **BKFL-01**: A backfill script re-fetches dates from original sources for meetings from ~1 week ago onward and corrects mismatches
-- [ ] **BKFL-02**: Backfill script supports --dry-run mode that reports what would change without modifying the database
-- [ ] **BKFL-03**: Backfill script produces a verification report showing total meetings checked, corrected, and unchanged
-- [ ] **BKFL-04**: Backfill script logs before/after values for every corrected meeting (meeting ID, old date, new date, source)
-- [ ] **BKFL-05**: Backfill script tracks provenance — identifies which stored dates originated from pubDate fallback vs parsed description
+- [x] **BKFL-01**: A backfill script re-fetches dates from original sources for meetings from ~1 week ago onward and corrects mismatches
+- [x] **BKFL-02**: Backfill script supports --dry-run mode that reports what would change without modifying the database
+- [x] **BKFL-03**: Backfill script produces a verification report showing total meetings checked, corrected, and unchanged
+- [x] **BKFL-04**: Backfill script logs before/after values for every corrected meeting (meeting ID, old date, new date, source)
+- [x] **BKFL-05**: Backfill script tracks provenance — identifies which stored dates originated from pubDate fallback vs parsed description
 
 ### Link Validation
 
@@ -71,11 +71,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TEST-02 | Phase 2 | Complete |
 | TEST-03 | Phase 2 | Complete |
 | TEST-04 | Phase 2 | Complete |
-| BKFL-01 | Phase 3 | Pending |
-| BKFL-02 | Phase 3 | Pending |
-| BKFL-03 | Phase 3 | Pending |
-| BKFL-04 | Phase 3 | Pending |
-| BKFL-05 | Phase 3 | Pending |
+| BKFL-01 | Phase 3 | Complete |
+| BKFL-02 | Phase 3 | Complete |
+| BKFL-03 | Phase 3 | Complete |
+| BKFL-04 | Phase 3 | Complete |
+| BKFL-05 | Phase 3 | Complete |
 | LINK-01 | Phase 4 | Pending |
 | LINK-02 | Phase 4 | Pending |
 | LINK-03 | Phase 4 | Pending |
