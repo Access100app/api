@@ -1,0 +1,17 @@
+{
+    "name": "access100/app",
+    "description": "Access100 API backend",
+    "require": {},
+    "require-dev": {
+        "phpunit/phpunit": "^11"
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Access100\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "preferred-install": "dist"
+    }
+}

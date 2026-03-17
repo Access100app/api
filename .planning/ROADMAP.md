@@ -42,7 +42,13 @@ Plans:
   2. Maui Legistar scraper uses `DateTimeImmutable` with explicit `DateTimeZone('Pacific/Honolulu')` so a Docker UTC host cannot shift meeting dates
   3. PHPUnit test suite runs to green with fixture tests covering: eHawaii regex match, eHawaii pubDate fallback, Maui timezone, NCO date format, Honolulu Boards date format
   4. All four scraper parsers can be invoked against a live feed without producing a date that differs from the date shown on the official source page
-**Plans**: TBD
+**Plans**: 5 plans
+Plans:
+- [ ] 02-01-PLAN.md — PHPUnit infrastructure: composer.json, phpunit.xml, .gitignore vendor/ update
+- [ ] 02-02-PLAN.md — eHawaii fix: secondary F j, Y regex + extract parse_rss_item() to parse_helpers_ehawaii.php
+- [ ] 02-03-PLAN.md — Maui fix: DateTimeImmutable + Pacific/Honolulu + extract parse_maui_date() to parse_helpers_maui.php
+- [ ] 02-04-PLAN.md — NCO and Honolulu Boards tests: NcoParserTest.php, HnlBoardsParserTest.php
+- [ ] 02-05-PLAN.md — eHawaii and Maui tests: EHawaiiParserTest.php, MauiParserTest.php + full suite green
 
 ### Phase 3: Date Backfill
 **Goal**: All recent and future meetings in the database have dates that match what the official source currently reports, with a complete audit trail of every correction made
@@ -75,6 +81,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Fallback Audit | 2/2 | Complete   | 2026-03-17 |
-| 2. Parser Fixes and Tests | 0/? | Not started | - |
+| 2. Parser Fixes and Tests | 0/5 | Not started | - |
 | 3. Date Backfill | 0/? | Not started | - |
 | 4. Link Checker | 0/? | Not started | - |
