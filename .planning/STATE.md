@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-link-checker 04-01-PLAN.md — v1 milestone complete
-last_updated: "2026-03-17T18:47:51.903Z"
+stopped_at: Completed 05-time-backfill 05-01-PLAN.md
+last_updated: "2026-03-17T18:59:48.786Z"
 last_activity: 2026-03-17 — Plan 01-01 complete
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 4
-  total_plans: 10
-  completed_plans: 10
+  total_plans: 12
+  completed_plans: 11
   percent: 10
 ---
 
@@ -58,6 +58,7 @@ Progress: [█░░░░░░░░░] 10%
 | Phase 03-date-backfill P01 | 2 | 1 tasks | 1 files |
 | Phase 03-date-backfill P02 | 3 | 2 tasks | 0 files |
 | Phase 04-link-checker P01 | 10 | 2 tasks | 1 files |
+| Phase 05-time-backfill PP01 | 5 | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -89,6 +90,13 @@ Recent decisions affecting current work:
 - [Phase 03-date-backfill]: DB backfill pattern: dry-run review → operator gate → live run → idempotency check → audit cross-verify
 - [Phase 04-link-checker]: GET not HEAD for link checking: government servers reject HEAD (false positives) — same pattern as admin.php
 - [Phase 04-link-checker]: 306 eHawaii PDF attachment failures are transient (status=0 connection error) — not permanent; zero detail_url failures
+- [Phase 05-time-backfill]: eHawaii UPDATE sets only meeting_time (single param) — source has no end time field
+- [Phase 05-time-backfill]: NCO and Honolulu Boards UPDATE sets both meeting_time and meeting_time_end — null passed when end regex does not match
+- [Phase 05-time-backfill]: Skip check runs after extract so parse_failures and total_skipped are mutually exclusive counts
+
+### Roadmap Evolution
+
+- Phase 5 added: Time Backfill — re-parse stored raw_rss_data to extract missing meeting_time values across NCO (41/44), Honolulu Boards (11/21), and eHawaii (37/350)
 
 ### Pending Todos
 
@@ -101,6 +109,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T18:47:51.901Z
-Stopped at: Completed 04-link-checker 04-01-PLAN.md — v1 milestone complete
+Last session: 2026-03-17T18:59:48.781Z
+Stopped at: Completed 05-time-backfill 05-01-PLAN.md
 Resume file: None

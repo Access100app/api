@@ -104,4 +104,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Parser Fixes and Tests | 1/5 | In Progress|  |
 | 3. Date Backfill | 1/2 | In Progress|  |
 | 4. Link Checker | 1/1 | Complete   | 2026-03-17 |
-| 5. Time Backfill | 0/2 | Planned    |  |
+| 5. Time Backfill | 1/2 | In Progress|  |
