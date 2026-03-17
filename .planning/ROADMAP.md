@@ -81,6 +81,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Fallback Audit | 2/2 | Complete   | 2026-03-17 |
-| 2. Parser Fixes and Tests | 0/5 | Not started | - |
+| 2. Parser Fixes and Tests | 1/5 | In Progress|  |
 | 3. Date Backfill | 0/? | Not started | - |
 | 4. Link Checker | 0/? | Not started | - |

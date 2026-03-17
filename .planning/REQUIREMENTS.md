@@ -11,7 +11,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 - [ ] **DATE-01**: eHawaii scraper extracts meeting dates from RSS description field reliably, with improved regex handling for format variations
 - [x] **DATE-02**: eHawaii scraper logs an explicit warning when pubDate fallback is used instead of extracting from description
-- [ ] **DATE-03**: Maui Legistar scraper uses DateTimeImmutable with explicit Pacific/Honolulu timezone so UTC Docker environment doesn't shift dates
+- [x] **DATE-03**: Maui Legistar scraper uses DateTimeImmutable with explicit Pacific/Honolulu timezone so UTC Docker environment doesn't shift dates
 - [x] **DATE-04**: NCO scraper date parsing is audited against live feed samples and confirmed correct or fixed
 - [x] **DATE-05**: Honolulu Boards scraper date parsing is audited against live feed samples and confirmed correct or fixed
 
@@ -64,7 +64,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | DATE-01 | Phase 2 | Pending |
 | DATE-02 | Phase 1 | Complete |
-| DATE-03 | Phase 2 | Pending |
+| DATE-03 | Phase 2 | Complete |
 | DATE-04 | Phase 1 | Complete |
 | DATE-05 | Phase 1 | Complete |
 | TEST-01 | Phase 2 | Pending |
