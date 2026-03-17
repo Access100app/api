@@ -51,23 +51,36 @@ function parse_rss_item(SimpleXMLElement $item, int $council_id): ?array
         $lines = preg_split('/<br\s*\/?>/i', $desc_html);
         $lines = array_values(array_filter(array_map(fn($l) => trim(strip_tags($l)), $lines)));
         if (!empty($lines[0])) {
+            $time_part = '';
             // Date range format: "April 21, 2026 - April 28, 2026 - 7:00 pm..."
-            if (preg_match('/^([A-Z][a-z]+ \d{1,2}, \d{4})\s*-\s*[A-Z][a-z]+ \d{1,2}, \d{4}\s*-/i', $lines[0], $m)) {
+            if (preg_match('/^([A-Z][a-z]+ \d{1,2}, \d{4})\s*-\s*[A-Z][a-z]+ \d{1,2}, \d{4}\s*-\s*(.+)$/i', $lines[0], $m)) {
                 $dt = DateTime::createFromFormat('F j, Y', trim($m[1]));
                 if ($dt) {
                     $date_str = $dt->format('Y-m-d');
                 }
+                $time_part = $m[2];
             // Single date format: "April 21, 2026 - 7:00 pm..."
-            } elseif (preg_match('/^([A-Z][a-z]+ \d{1,2}, \d{4})\s*-/i', $lines[0], $m)) {
+            } elseif (preg_match('/^([A-Z][a-z]+ \d{1,2}, \d{4})\s*-\s*(.+)$/i', $lines[0], $m)) {
                 $dt = DateTime::createFromFormat('F j, Y', trim($m[1]));
                 if ($dt) {
                     $date_str = $dt->format('Y-m-d');
+                }
+                $time_part = $m[2];
+            }
+
+            // Extract time from NCO-style "6:30 pm - 8:30 pm" or single "10:00 am"
+            if (!empty($time_part) && empty($time_str)) {
+                if (preg_match('/(\d{1,2}:\d{2}\s*[ap]m)\s*-\s*(\d{1,2}:\d{2}\s*[ap]m)/i', $time_part, $tm)) {
+                    $time_str = date('H:i:s', strtotime($tm[1]));
+                } elseif (preg_match('/(\d{1,2}:\d{2}\s*[ap]m)/i', $time_part, $tm)) {
+                    $time_str = date('H:i:s', strtotime($tm[1]));
                 }
             }
         }
     }
 
-    if (preg_match('/Time:\s*(\d{1,2}:\d{2}\s*[AP]M)/i', $desc_html, $m)) {
+    // Primary time format: "Time: H:MM AM" label
+    if (empty($time_str) && preg_match('/Time:\s*(\d{1,2}:\d{2}\s*[AP]M)/i', $desc_html, $m)) {
         $time_str = date('H:i:s', strtotime($m[1]));
     }
 
