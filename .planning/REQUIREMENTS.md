@@ -32,10 +32,10 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Link Validation
 
-- [ ] **LINK-01**: A link checker script validates all stored URLs: detail_url, agenda links, and attachment file_url
-- [ ] **LINK-02**: Link checker uses batched GET requests (curl_multi, not HEAD) to avoid false positives from government servers
-- [ ] **LINK-03**: Link checker produces a report with meeting ID, URL, HTTP status code for every broken link
-- [ ] **LINK-04**: Link checker report classifies failures as permanent (404/410) or transient (5xx/timeout)
+- [x] **LINK-01**: A link checker script validates all stored URLs: detail_url, agenda links, and attachment file_url
+- [x] **LINK-02**: Link checker uses batched GET requests (curl_multi, not HEAD) to avoid false positives from government servers
+- [x] **LINK-03**: Link checker produces a report with meeting ID, URL, HTTP status code for every broken link
+- [x] **LINK-04**: Link checker report classifies failures as permanent (404/410) or transient (5xx/timeout)
 
 ## v2 Requirements
 
@@ -76,10 +76,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BKFL-03 | Phase 3 | Complete |
 | BKFL-04 | Phase 3 | Complete |
 | BKFL-05 | Phase 3 | Complete |
-| LINK-01 | Phase 4 | Pending |
-| LINK-02 | Phase 4 | Pending |
-| LINK-03 | Phase 4 | Pending |
-| LINK-04 | Phase 4 | Pending |
+| LINK-01 | Phase 4 | Complete |
+| LINK-02 | Phase 4 | Complete |
+| LINK-03 | Phase 4 | Complete |
+| LINK-04 | Phase 4 | Complete |
 
 **Coverage:**
 - v1 requirements: 18 total
