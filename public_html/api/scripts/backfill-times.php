@@ -260,6 +260,10 @@ function extract_nco_hnlboards_time(array $raw): array
         $end_ts   = strtotime($tm[2]);
         if ($start_ts) $time_start = date('H:i:s', $start_ts);
         if ($end_ts)   $time_end   = date('H:i:s', $end_ts);
+    // Single time with no end: "10:00 am"
+    } elseif (preg_match('/(\d{1,2}:\d{2}\s*[ap]m)/i', $time_part, $tm)) {
+        $start_ts = strtotime($tm[1]);
+        if ($start_ts) $time_start = date('H:i:s', $start_ts);
     }
 
     return [
