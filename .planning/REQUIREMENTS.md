@@ -19,8 +19,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 - [ ] **TEST-01**: eHawaii date parser has fixture-based unit tests covering regex match, pubDate fallback, and edge cases
 - [ ] **TEST-02**: Maui Legistar date parser has fixture-based unit tests covering timezone handling
-- [ ] **TEST-03**: NCO date parser has fixture-based unit tests covering the DateTime::createFromFormat pattern
-- [ ] **TEST-04**: Honolulu Boards date parser has fixture-based unit tests covering the DateTime::createFromFormat pattern
+- [x] **TEST-03**: NCO date parser has fixture-based unit tests covering the DateTime::createFromFormat pattern
+- [x] **TEST-04**: Honolulu Boards date parser has fixture-based unit tests covering the DateTime::createFromFormat pattern
 
 ### Backfill
 
@@ -69,8 +69,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DATE-05 | Phase 1 | Complete |
 | TEST-01 | Phase 2 | Pending |
 | TEST-02 | Phase 2 | Pending |
-| TEST-03 | Phase 2 | Pending |
-| TEST-04 | Phase 2 | Pending |
+| TEST-03 | Phase 2 | Complete |
+| TEST-04 | Phase 2 | Complete |
 | BKFL-01 | Phase 3 | Pending |
 | BKFL-02 | Phase 3 | Pending |
 | BKFL-03 | Phase 3 | Pending |

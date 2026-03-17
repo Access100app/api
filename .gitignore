@@ -37,3 +37,8 @@ public_html/meetings/
 
 # Composer vendor directory — installed in container, not committed
 /vendor/
+public_html/vendor/
+
+# PHPUnit generated cache files
+.phpunit.result.cache
+public_html/.phpunit.result.cache
