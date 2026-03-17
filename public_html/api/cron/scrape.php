@@ -21,6 +21,7 @@ require_once __DIR__ . '/../services/summarizer.php';
 
 // ─── CLI Arguments ──────────────────────────────────────────────────
 $dry_run    = in_array('--dry-run', $argv ?? [], true);
+$audit_mode = in_array('--audit', $argv ?? [], true);
 $limit      = 0;  // 0 = all active councils
 $council_id = 0;  // 0 = all councils
 
@@ -48,6 +49,72 @@ echo date('[Y-m-d H:i:s]') . " Scraper starting" . ($dry_run ? ' (DRY RUN)' : ''
 
 try {
     $pdo = get_db();
+
+    // ─── Audit Mode ─────────────────────────────────────────────────
+    if ($audit_mode) {
+        echo date('[Y-m-d H:i:s]') . " eHawaii audit mode starting...\n";
+
+        // Check what source values actually exist (pitfall: DEFAULT may not be 'ehawaii')
+        $src_check = $pdo->query("SELECT DISTINCT source FROM meetings WHERE source LIKE '%hawaii%' OR source IS NULL LIMIT 20");
+        $sources = array_column($src_check->fetchAll(), 'source');
+        echo "  Source values found: " . implode(', ', array_map(fn($s) => $s ?? 'NULL', $sources)) . "\n";
+
+        $stmt = $pdo->query("
+            SELECT id, council_id, title, meeting_date, raw_rss_data
+            FROM meetings
+            WHERE source = 'ehawaii'
+              AND raw_rss_data IS NOT NULL
+            ORDER BY meeting_date DESC
+            LIMIT 500
+        ");
+        $meetings = $stmt->fetchAll();
+        echo "  Meetings with raw_rss_data (source=ehawaii): " . count($meetings) . "\n\n";
+
+        $fallback_count = 0;
+        $mismatch_count = 0;
+        $mismatches = [];
+
+        foreach ($meetings as $row) {
+            $raw = json_decode($row['raw_rss_data'], true);
+            $desc_html = html_entity_decode($raw['description'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+            // Re-run the same regex from parse_rss_item()
+            $date_str = '';
+            if (preg_match('/Date:\s*(\d{4}\/\d{2}\/\d{2})/i', $desc_html, $dm)) {
+                $date_str = str_replace('/', '-', $dm[1]);
+            }
+
+            $used_fallback = empty($date_str);
+            if ($used_fallback && !empty($raw['pubDate'])) {
+                $date_str = date('Y-m-d', strtotime($raw['pubDate']));
+                $fallback_count++;
+            }
+
+            if (!empty($date_str) && $date_str !== $row['meeting_date']) {
+                $mismatch_count++;
+                $mismatches[] = sprintf(
+                    '  [eHawaii] meeting_id=%d | stored: %s | would_parse: %s | title: %s',
+                    $row['id'], $row['meeting_date'], $date_str, substr($row['title'], 0, 60)
+                );
+            }
+        }
+
+        echo "--- eHawaii ---\n";
+        echo "  pubDate fallbacks found: {$fallback_count}\n";
+        echo "  Date mismatches: {$mismatch_count}\n";
+        foreach ($mismatches as $line) echo $line . "\n";
+        if ($mismatch_count > 0) {
+            echo "  Verdict: {$mismatch_count} mismatches found — fix needed\n";
+        } elseif ($fallback_count > 0) {
+            echo "  Verdict: pubDate fallbacks present but dates matched — logging needed, parser may be OK\n";
+        } else {
+            echo "  Verdict: 0 mismatches — parsing correct\n";
+        }
+
+        $elapsed = round(microtime(true) - $start, 2);
+        echo "\n" . date('[Y-m-d H:i:s]') . " Done in {$elapsed}s.\n";
+        exit(0);
+    }
 
     // ─── 1. Get councils to poll ────────────────────────────────────
     $sql = "SELECT id, name, rss_url FROM councils WHERE is_active = 1 AND rss_url != ''";

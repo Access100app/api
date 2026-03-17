@@ -27,6 +27,7 @@ define('NCO_USER_AGENT', 'Access100-Scraper/1.0 (+https://civi.me)');
 
 // ─── CLI Arguments ──────────────────────────────────────────────
 $dry_run      = in_array('--dry-run', $argv ?? [], true);
+$audit_mode   = in_array('--audit', $argv ?? [], true);
 $skip_details = in_array('--skip-details', $argv ?? [], true);
 $limit        = 0; // 0 = process all items
 
@@ -51,6 +52,77 @@ echo date('[Y-m-d H:i:s]') . " NCO scraper starting" . ($dry_run ? ' (DRY RUN)' 
 
 try {
     $pdo = get_db();
+
+    // ─── Audit Mode ─────────────────────────────────────────────────
+    if ($audit_mode) {
+        echo date('[Y-m-d H:i:s]') . " NCO audit mode starting...\n";
+
+        $stmt = $pdo->query("
+            SELECT id, council_id, title, meeting_date, raw_rss_data
+            FROM meetings
+            WHERE source = 'nco'
+              AND raw_rss_data IS NOT NULL
+            ORDER BY meeting_date DESC
+            LIMIT 500
+        ");
+        $meetings = $stmt->fetchAll();
+        echo "  Meetings with raw_rss_data (source=nco): " . count($meetings) . "\n\n";
+
+        $fallback_count = 0;
+        $mismatch_count = 0;
+        $mismatches = [];
+
+        foreach ($meetings as $row) {
+            $raw = json_decode($row['raw_rss_data'], true);
+            $desc_html = html_entity_decode($raw['description'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $desc_lines = preg_split('/<br\s*\/?>/i', $desc_html);
+            $desc_lines = array_map('trim', array_map('strip_tags', $desc_lines));
+            $desc_lines = array_values(array_filter($desc_lines, fn($l) => $l !== ''));
+
+            $date_time_line = $desc_lines[0] ?? '';
+            // Extract date part — same logic as parse_nco_rss_item()
+            if (preg_match('/^([A-Z][a-z]+ \d{1,2}, \d{4})\s*-\s*[A-Z][a-z]+ \d{1,2}, \d{4}\s*-\s*/i', $date_time_line, $dm)) {
+                $date_part = $dm[1];
+            } elseif (preg_match('/^([A-Z][a-z]+ \d{1,2}, \d{4})\s*-/i', $date_time_line, $dm)) {
+                $date_part = $dm[1];
+            } else {
+                $date_part = $date_time_line;
+            }
+
+            $dt = DateTime::createFromFormat('F j, Y', trim($date_part));
+            $would_parse = $dt ? $dt->format('Y-m-d') : null;
+            $used_fallback = ($would_parse === null);
+
+            if ($used_fallback && !empty($raw['pubDate'])) {
+                $would_parse = date('Y-m-d', strtotime($raw['pubDate']));
+                $fallback_count++;
+            }
+
+            if ($would_parse !== null && $would_parse !== $row['meeting_date']) {
+                $mismatch_count++;
+                $mismatches[] = sprintf(
+                    '  [NCO] meeting_id=%d | stored: %s | would_parse: %s | title: %s',
+                    $row['id'], $row['meeting_date'], $would_parse, substr($row['title'], 0, 60)
+                );
+            }
+        }
+
+        echo "--- NCO ---\n";
+        echo "  pubDate fallbacks found: {$fallback_count}\n";
+        echo "  Date mismatches: {$mismatch_count}\n";
+        foreach ($mismatches as $line) echo $line . "\n";
+        if ($mismatch_count > 0) {
+            echo "  Verdict: {$mismatch_count} mismatches found — fix needed\n";
+        } elseif ($fallback_count > 0) {
+            echo "  Verdict: pubDate fallbacks present but dates matched — logging needed, parser may be OK\n";
+        } else {
+            echo "  Verdict: 0 mismatches — parsing correct\n";
+        }
+
+        $elapsed = round(microtime(true) - $start, 2);
+        echo "\n" . date('[Y-m-d H:i:s]') . " Done in {$elapsed}s.\n";
+        exit(0);
+    }
 
     // ─── 1. Build board map: board_number → council_id ────────────
     $board_map = build_board_map($pdo);
