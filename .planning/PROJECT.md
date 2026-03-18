@@ -2,83 +2,78 @@
 
 ## What This Is
 
-A validation and correction layer for the Access100 meeting scraper system. The 4 scrapers (eHawaii RSS, Maui Legistar API, NCO RSS, Honolulu Boards RSS) currently store meeting data without verifying accuracy against official sources. This project improves date parsing to prevent future errors, validates all stored URLs, and backfills corrected dates for recent/upcoming meetings.
+A validated and corrected meeting scraper system for the Access100 API. Four scrapers (eHawaii RSS, Maui Legistar API, NCO RSS, Honolulu Boards RSS) now extract dates and times correctly with 19 PHPUnit regression tests, pubDate fallback logging, and `--audit` diagnostic mode. All stored meeting dates and times have been verified against official sources and corrected where needed.
 
 ## Core Value
 
-Meeting dates displayed on civi.me must match the dates on the official government calendar pages — wrong dates mean residents miss public meetings.
+Meeting dates and times displayed on civi.me must match the official government calendar pages — wrong data means residents miss public meetings.
 
 ## Requirements
 
 ### Validated
 
-(None yet — ship to validate)
+- ✓ eHawaii scraper extracts meeting dates reliably with secondary regex for NCO-format descriptions — v1.0
+- ✓ eHawaii scraper logs explicit warning on pubDate fallback — v1.0
+- ✓ Maui Legistar uses DateTimeImmutable with explicit Pacific/Honolulu timezone — v1.0
+- ✓ NCO date parsing audited against live feed and confirmed correct — v1.0
+- ✓ Honolulu Boards date parsing audited against live feed and confirmed correct — v1.0
+- ✓ All 4 scrapers have fixture-based PHPUnit unit tests — v1.0
+- ✓ 77 meeting dates corrected (36 eHawaii + 41 NCO) with full audit trail — v1.0
+- ✓ Backfill script supports --dry-run with per-meeting provenance logging — v1.0
+- ✓ 824 URLs validated, 0 permanent failures, 306 transient eHawaii PDF timeouts — v1.0
+- ✓ Link checker classifies permanent (404/410) vs transient (5xx/timeout) failures — v1.0
+- ✓ 74 missing meeting times backfilled from raw_rss_data — v1.0
+- ✓ Single-time regex added to all scrapers for descriptions without end time — v1.0
 
 ### Active
 
-- [ ] eHawaii scraper extracts meeting dates from RSS description field reliably, with explicit fallback logging when pubDate is used instead
-- [ ] Maui Legistar scraper handles timezone explicitly (HST) so Docker UTC doesn't shift dates
-- [ ] NCO scraper date parsing is validated against source feed structure
-- [ ] Honolulu Boards scraper date parsing is validated against source feed structure
-- [ ] All stored URLs (detail_url, agenda links, attachment file_url) are checked for liveness (HTTP status)
-- [ ] Broken links are flagged in a report (not auto-removed) with meeting ID, URL, and HTTP status
-- [ ] Meetings from ~1 week ago onward have dates re-fetched from original sources and corrected where wrong
-- [ ] A verification report confirms how many meetings were checked, how many corrected, and what changed
-- [ ] Scraper date parsing improvements are unit-testable with sample RSS/API payloads
+(None — next milestone not yet planned)
 
 ### Out of Scope
 
-- New scraper sources — only fixing the existing 4
-- Access100 API endpoint changes — this is scraper/cron layer only
-- WordPress frontend changes — those live in the civi.me repo
-- Ongoing cron validation job — this is a one-time fix + improved parsing
-- Auto-removal of broken links — flag and report only
-- Meetings older than ~1 week ago — only recent/future meetings get backfilled
+- Ongoing cron validation job — scrapers now parse correctly, validation is one-time
+- Auto-removal of broken links — flag and report only (human decides)
+- 306 transient eHawaii PDF attachment failures — likely CDN rate limiting, not dead links
+- meeting_time_end column — does not exist in DB schema, end times logged but not persisted
 
 ## Context
 
+**Current state (shipped v1.0):**
+- 14,005 LOC PHP across API, scrapers, scripts, and tests
+- 19 PHPUnit tests covering all 4 scraper date parsers
+- 3 backfill/validation scripts: `validate-dates.php`, `backfill-times.php`, `check-links.php`
+- 2 extracted parse helpers: `parse_helpers_ehawaii.php`, `parse_helpers_maui.php`
+- All scrapers have `--audit` mode and pubDate fallback `error_log()` warnings
+- Council 639 (NCO duplicate source) cleaned up — rss_url cleared, 37 ghost meetings removed
+- WordPress timezone display fix shipped in civi.me repo (wp_date UTC passthrough)
+
 **4 Scrapers:**
 
-| Scraper | Source | File | Schedule |
-|---------|--------|------|----------|
-| eHawaii RSS | `calendar.ehawaii.gov` RSS feeds per council | `cron/scrape.php` | Every 15 min |
-| Maui Legistar | `webapi.legistar.com/v1/mauicounty` JSON API | `cron/scrape-maui-legistar.php` | Hourly +6min |
-| NCO | `honolulu.gov/nco/events/feed/` RSS | `cron/scrape-nco.php` | Hourly +2min |
-| Honolulu Boards | `honolulu.gov/events/feed/` RSS | `cron/scrape-honolulu-boards.php` | Hourly +4min |
-
-**Known Date Parsing Issues:**
-
-- **eHawaii:** Uses regex `/Date:\s*(\d{4}\/\d{2}\/\d{2})/i` on RSS description. Falls back to `pubDate` (RSS publication timestamp, not meeting date) when regex fails. This is the primary source of wrong dates.
-- **Maui Legistar:** Parses `EventDate` like `"2026-03-04T00:00:00"` without timezone specifier. Server runs UTC in Docker, which could shift dates relative to HST.
-- **NCO/Honolulu Boards:** Not yet audited for date parsing issues but need validation.
-
-**Database Schema (relevant tables):**
-
-- `meetings` — `id`, `state_id`, `external_id`, `council_id`, `title`, `meeting_date`, `meeting_time`, `detail_url`, `zoom_link`, `status`, `source`
-- `attachments` — `id`, `meeting_id`, `file_name`, `file_url`, `file_type`
-- `poll_state` — tracks last scrape per council
-- `scrape_history` — run statistics
-
-**Existing Scripts:**
-- `scripts/` directory has backfill precedent (`backfill-attachments.php`)
-- All scrapers support `--dry-run` mode
+| Scraper | Source | File | Schedule | Status |
+|---------|--------|------|----------|--------|
+| eHawaii RSS | `calendar.ehawaii.gov` | `cron/scrape.php` + `parse_helpers_ehawaii.php` | Every 15 min | ✓ Fixed |
+| Maui Legistar | `webapi.legistar.com/v1/mauicounty` | `cron/scrape-maui-legistar.php` + `parse_helpers_maui.php` | Hourly +6min | ✓ Hardened |
+| NCO | `honolulu.gov/nco/events/feed/` | `cron/scrape-nco.php` | Hourly +2min | ✓ Fixed |
+| Honolulu Boards | `honolulu.gov/events/feed/` | `cron/scrape-honolulu-boards.php` | Hourly +4min | ✓ Fixed |
 
 ## Constraints
 
 - **Live database**: Changes affect civi.me immediately — must be safe to run against production
-- **External API rate limits**: eHawaii and Legistar have implicit rate limits — must throttle re-fetch requests
 - **No schema changes**: Work within existing meetings/attachments tables
 - **PHP codebase**: All scraper code is PHP, no build tooling — scripts run directly via CLI or cron
 - **Docker environment**: Server timezone is UTC, Hawaii is HST (UTC-10) — timezone handling must be explicit
+- **Tests run in container**: Host PHP 8.1 incompatible with PHPUnit 11 (requires 8.2)
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Improve parsing inline in scrapers | Prevents future errors at the source rather than post-hoc validation | — Pending |
-| Re-fetch from original sources for backfill | No known-good reference exists; official feeds are the authority | — Pending |
-| Flag broken links, don't auto-remove | Links may be temporarily down; human should decide | — Pending |
-| Backfill only recent/future meetings | Older meetings are historical; residents act on upcoming ones | — Pending |
+| Improve parsing inline in scrapers | Prevents future errors at the source | ✓ Good — secondary regex + timezone fix |
+| Re-parse stored raw_rss_data for backfill | Deterministic, no external requests, proven correct in audit | ✓ Good — 77 dates + 74 times corrected |
+| Flag broken links, don't auto-remove | Links may be temporarily down; human decides | ✓ Good — 306 transient, 0 permanent |
+| Extract parse helpers for testability | Functions can be require_once'd by PHPUnit without DB side effects | ✓ Good — 19 tests, all green |
+| Single-time regex fallback | Descriptions with only start time (no end) were being missed | ✓ Good — 11 more meetings filled |
+| wp_date UTC passthrough for times | API stores local Hawaii time; wp_date was double-converting | ✓ Good — fixed in civi.me repo |
 
 ---
-*Last updated: 2026-03-16 after initialization*
+*Last updated: 2026-03-17 after v1.0 Scraper Validation milestone*
